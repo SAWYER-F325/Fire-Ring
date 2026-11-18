@@ -18,8 +18,9 @@
 
 ## What it does
 
-- **Notch alerts**: when a task finishes or needs you, the notch drops down for 3, 6 or 10 seconds. Point at it to see every task; click one to jump straight back to that conversation. “Clear all” burns finished tasks away in a shower of sparks.
-- **Menu-bar panel**: click the three-layer flame to see tasks by Needs you / Running / Done, and click any task to open its app and conversation.
+- **Notch alerts**: when a task finishes or needs you, the notch drops down for 3, 6 or 10 seconds. Point at it to see every task; click one to jump straight back to that conversation. “Clear all” burns finished tasks away in a shower of sparks, with a crackle of fire. The notch steps aside in full-screen apps.
+- **Sounds and notifications**: a sound and a system notification when a task needs you or finishes, from original sounds or the macOS ones; a reminder if you have not responded, pause and per-tool switches, and a one-time alert when Codex usage or the DeepSeek balance runs low. “Try it” in Settings plays the whole thing.
+- **Menu-bar panel**: click the three-layer flame to see tasks by Needs you / Running / Done, and click any task to open its app and conversation. Right-click the flame to pause alerts, open Settings or quit.
 - **Limits and balance**: what is left of Codex’s 5-hour and weekly limits; your DeepSeek balance, today’s spending and a 24-hour balance curve; an optional reminder of when a used-up Claude limit resets. Choose whose limits to show in Settings.
 - **Connect what you use**: Claude Code, Codex and DeepSeek Harness connect one by one; using just one is fine. A tool you have not connected is never read and never shown.
 - **Light and dark**: pick Dark (default), Light or Match system in Settings. The notch itself always stays black.
