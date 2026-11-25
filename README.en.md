@@ -69,4 +69,8 @@ Quit Fire Ring from Settings and delete it from Applications. If you connected D
 
 ---
 
-Fire Ring is not open source; this repository only holds its introduction and installers. See [LICENSE](LICENSE) for the copyright notice and [THIRD-PARTY.md](THIRD-PARTY.md) for third-party components bundled in the installer.
+## Contributing
+
+Fire Ring is open source under the [MIT License](LICENSE). Issues and pull requests are welcome: start with [CONTRIBUTING.md](CONTRIBUTING.md), and see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) to build from source.
+
+Third-party components bundled in the app, and the trademarks of the tool logos, are listed in [LICENSES.md](LICENSES.md).

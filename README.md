@@ -69,4 +69,8 @@ Claude 桌面版没有在本机留下实时额度数据，Fire Ring 也不会借
 
 ---
 
-Fire Ring 不开源，本仓库只提供介绍和安装包。版权说明见 [LICENSE](LICENSE)，安装包内附带的第三方组件见 [THIRD-PARTY.md](THIRD-PARTY.md)。
+## 参与开发
+
+Fire Ring 是开源的，采用 [MIT 许可](LICENSE)。欢迎提 Issue 反馈问题，也欢迎直接提 PR：先看 [贡献指南](CONTRIBUTING.md)，从源码构建见 [开发说明](docs/DEVELOPMENT.md)。
+
+安装包内附带的第三方组件和各工具 logo 的版权说明见 [LICENSES.md](LICENSES.md)。

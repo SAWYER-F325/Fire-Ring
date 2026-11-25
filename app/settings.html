@@ -1,0 +1,1399 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fire Ring 设置</title>
+<style>
+  /* Fire Design · 设置窗口。窗口玻璃由 App 原生提供，这里只放内容。 */
+  @font-face {
+    font-family: Urbanist;
+    src: url(fonts/Urbanist-Variable.woff2) format('woff2');
+    font-weight: 100 900;
+  }
+  /* Colour modes, after Fire Design: dark is the default (the original look);
+     light is Fire Design's light — lavender ground, white raised tiles, an indigo
+     accent. <html data-theme="dark|light|system"> picks one; "system" follows macOS. */
+  :root {
+    color-scheme: dark;
+    --tint: 255,255,255;                 /* hover and pressed overlays */
+    --ink: #eef1f6; --ink-2: rgba(238,241,246,.62); --ink-3: rgba(238,241,246,.40);
+    --line: rgba(255,255,255,.10);
+    --waiting: #ff5a36; --waiting-rgb: 255,90,54;
+    --running: #7ea6ff;
+    --copper: #5fe3a1; --done-rgb: 95,227,161;
+    --accent: #4c8dff; --on-accent: #ffffff;
+    --ember: #ff8a2b; --gold: #ffd84a;
+    --word: linear-gradient(90deg, #ffd84a, #ff8a2b 45%, #f2452a);
+    --wash: transparent;
+    --page: radial-gradient(120% 70% at 0% 0%, rgba(255,122,43,.10), transparent 55%), rgba(14,15,19,.38);
+    --bar-bg: rgba(18,18,22,.72);
+    --field-bg: rgba(0,0,0,.25); --shadow: rgba(0,0,0,.3);
+    --tile: rgba(255,255,255,.05); --tile-hover: rgba(255,255,255,.10); --tile-shadow: 0 0 0 0 transparent;
+    --thumb: linear-gradient(180deg, rgba(255,255,255,.20), rgba(255,255,255,.10));
+    --thumb-shadow: inset 0 1px 0 rgba(255,255,255,.28), inset 0 0 0 .5px rgba(255,255,255,.14);
+    --tray: transparent;
+    --card: rgba(255,255,255,.05); --card-shadow: inset 0 0 0 .5px rgba(255,255,255,.08);
+    --nav-on: linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.08)); --nav-on-ink: #eef1f6;
+    --nav-on-shadow: inset 0 1px 0 rgba(255,255,255,.22);
+    --glyph-claude: #e8a083; --glyph-dsh: #9aaeff;
+    --liquid: cubic-bezier(.2,.8,.2,1);
+    --spring: linear(0, 0.058, 0.194, 0.361, 0.529, 0.679, 0.802, 0.897, 0.964, 1.007, 1.032, 1.044, 1.046, 1.042, 1.035, 1.028, 1.02, 1.013, 1.008, 1);
+    --fire-fill: linear-gradient(90deg, #ffd84a, #ff8a2b);
+    --fire-glow: rgba(255,138,43,.35);
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --tint: 40,45,120;
+    --ink: #14152b; --ink-2: #4d5070; --ink-3: #5a5d80;
+    --line: rgba(40,45,120,.13);
+    --waiting: #b0321f; --waiting-rgb: 176,50,31;
+    --running: #5057d2;
+    --copper: #0c6c4a; --done-rgb: 12,108,74;
+    --accent: #5249e0;
+    --ember: #93590a; --gold: #b87410;
+    --word: linear-gradient(90deg, #c27400, #d4521a 45%, #c4241a);
+    --wash: radial-gradient(110% 70% at 0% 0%, rgba(129,140,248,.20), transparent 60%),
+            radial-gradient(90% 60% at 100% 8%, rgba(192,132,252,.22), transparent 62%),
+            radial-gradient(100% 60% at 70% 100%, rgba(56,189,248,.16), transparent 62%), rgba(238,240,255,.30);
+    --page: radial-gradient(90% 60% at 0% 0%, rgba(129,140,248,.18), transparent 60%),
+            radial-gradient(70% 50% at 100% 0%, rgba(192,132,252,.22), transparent 62%),
+            radial-gradient(80% 50% at 80% 100%, rgba(56,189,248,.14), transparent 62%), rgba(240,242,255,.36);
+    --bar-bg: rgba(248,249,255,.62);
+    --field-bg: rgba(255,255,255,.62); --shadow: rgba(40,45,120,.2);
+    --tile: rgba(255,255,255,.55); --tile-hover: rgba(255,255,255,.74);
+    --tile-shadow: 0 1px 2px rgba(40,45,120,.06), 0 6px 16px rgba(40,45,120,.08);
+    --thumb: #ffffff; --thumb-shadow: inset 0 0 0 1.5px rgba(82,73,224,.65), 0 8px 20px -10px rgba(82,73,224,.7);
+    --tray: rgba(226,229,251,.34);
+    --card: rgba(255,255,255,.46);
+    --card-shadow: 0 1px 2px rgba(40,45,120,.05), 0 8px 24px rgba(40,45,120,.06), inset 0 0 0 .5px rgba(255,255,255,.75), inset 0 0 0 1px rgba(40,45,120,.06);
+    --nav-on: #5249e0; --nav-on-ink: #ffffff; --nav-on-shadow: 0 8px 20px -10px rgba(82,73,224,.8);
+    --glyph-claude: #a94a26; --glyph-dsh: #3346b8;
+  }
+  @media (prefers-color-scheme: light) {
+    :root[data-theme="system"] {
+    color-scheme: light;
+    --tint: 40,45,120;
+    --ink: #14152b; --ink-2: #4d5070; --ink-3: #5a5d80;
+    --line: rgba(40,45,120,.13);
+    --waiting: #b0321f; --waiting-rgb: 176,50,31;
+    --running: #5057d2;
+    --copper: #0c6c4a; --done-rgb: 12,108,74;
+    --accent: #5249e0;
+    --ember: #93590a; --gold: #b87410;
+    --word: linear-gradient(90deg, #c27400, #d4521a 45%, #c4241a);
+    --wash: radial-gradient(110% 70% at 0% 0%, rgba(129,140,248,.20), transparent 60%),
+            radial-gradient(90% 60% at 100% 8%, rgba(192,132,252,.22), transparent 62%),
+            radial-gradient(100% 60% at 70% 100%, rgba(56,189,248,.16), transparent 62%), rgba(238,240,255,.30);
+    --page: radial-gradient(90% 60% at 0% 0%, rgba(129,140,248,.18), transparent 60%),
+            radial-gradient(70% 50% at 100% 0%, rgba(192,132,252,.22), transparent 62%),
+            radial-gradient(80% 50% at 80% 100%, rgba(56,189,248,.14), transparent 62%), rgba(240,242,255,.36);
+    --bar-bg: rgba(248,249,255,.62);
+    --field-bg: rgba(255,255,255,.62); --shadow: rgba(40,45,120,.2);
+    --tile: rgba(255,255,255,.55); --tile-hover: rgba(255,255,255,.74);
+    --tile-shadow: 0 1px 2px rgba(40,45,120,.06), 0 6px 16px rgba(40,45,120,.08);
+    --thumb: #ffffff; --thumb-shadow: inset 0 0 0 1.5px rgba(82,73,224,.65), 0 8px 20px -10px rgba(82,73,224,.7);
+    --tray: rgba(226,229,251,.34);
+    --card: rgba(255,255,255,.46);
+    --card-shadow: 0 1px 2px rgba(40,45,120,.05), 0 8px 24px rgba(40,45,120,.06), inset 0 0 0 .5px rgba(255,255,255,.75), inset 0 0 0 1px rgba(40,45,120,.06);
+    --nav-on: #5249e0; --nav-on-ink: #ffffff; --nav-on-shadow: 0 8px 20px -10px rgba(82,73,224,.8);
+    --glyph-claude: #a94a26; --glyph-dsh: #3346b8;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  body {
+    font-family: Urbanist, "PingFang SC", -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased; -webkit-user-select: none; user-select: none;
+    color: var(--ink); font-size: 13px; line-height: 19px;
+    background: var(--page);
+  }
+  button { font: inherit; color: inherit; }
+  code, .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; }
+  a { color: var(--running); text-decoration: none; cursor: pointer; }
+  a:hover { text-decoration: underline; }
+
+  /* ── layout ─────────────────────────────────────────────── */
+  .app { display: grid; grid-template-columns: 168px 1fr; height: 100%; }
+  nav { padding: 52px 10px 14px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+  .brand { display: flex; align-items: center; gap: 8px; padding: 0 8px 14px; }
+  .brand svg { filter: drop-shadow(0 0 8px rgba(255,122,43,.5)); }
+  .wordmark { font-size: 16px; font-weight: 650; letter-spacing: .01em; background: var(--word); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .navItem {
+    position: relative; display: flex; align-items: center; gap: 9px; height: 32px; padding: 0 10px; border: 0; border-radius: 10px;
+    background: transparent; cursor: pointer; text-align: left; color: var(--ink-2);
+    transition: background-color 360ms var(--liquid), color 360ms var(--liquid);
+  }
+  .navItem svg { flex: 0 0 auto; opacity: .8; }
+  .navItem:hover { background: rgba(var(--tint),.06); color: var(--ink); }
+  .navItem.on { background: var(--nav-on); box-shadow: var(--nav-on-shadow); color: var(--nav-on-ink); }
+  .navItem.on svg { opacity: 1; }
+  .navItem .dot { position: absolute; right: 10px; width: 7px; height: 7px; border-radius: 50%; background: var(--ember); box-shadow: 0 0 8px var(--ember); }
+  .navItem .dot[hidden] { display: none; }
+  .navFoot { margin-top: auto; padding: 0 10px; font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+  main { position: relative; overflow: hidden; }
+  .pane { position: absolute; inset: 0; overflow-y: auto; padding: 48px 26px 26px; opacity: 0; transform: translateY(8px); pointer-events: none;
+    transition: opacity 260ms var(--liquid), transform 420ms var(--spring); }
+  .pane.on { opacity: 1; transform: none; pointer-events: auto; }
+  h1 { margin: 0 0 4px; font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: .005em; }
+  .lede { margin: 0 0 18px; color: var(--ink-2); }
+  h2 { margin: 22px 0 8px; font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: .06em; color: var(--ink-3); }
+
+  .card { background: var(--card); border-radius: 14px; box-shadow: var(--card-shadow); }
+  .row { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 10px 14px; }
+  .row + .row { border-top: 1px solid var(--line); }
+  .row .text { flex: 1; min-width: 0; }
+  .row .title { font-size: 14px; line-height: 20px; font-weight: 500; }
+  .row .sub { font-size: 12px; line-height: 17px; color: var(--ink-2); }
+  .glyph { flex: 0 0 auto; width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; font-weight: 700; font-size: 14px; }
+  .glyph.claude { background: rgba(217,119,87,.18); color: var(--glyph-claude); }
+  .glyph.codex { background: rgba(var(--tint),.10); color: var(--ink); }
+  .glyph.dsh { background: rgba(77,107,254,.20); color: var(--glyph-dsh); }
+
+  .pill { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 11px; white-space: nowrap; }
+  .pill.ok { color: var(--copper); background: rgba(var(--done-rgb),.12); }
+  .pill.warn { color: var(--waiting); background: rgba(var(--waiting-rgb),.12); }
+  .pill.off { color: var(--ink-2); background: rgba(var(--tint),.07); }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 30px; padding: 0 13px; border: 0; border-radius: 10px;
+    cursor: pointer; background: rgba(var(--tint),.10); white-space: nowrap;
+    transition: background-color 360ms var(--liquid), transform 160ms var(--liquid), opacity 240ms var(--liquid);
+  }
+  .btn:hover { background: rgba(var(--tint),.16); transition-duration: 200ms; }
+  .btn:active { transform: scale(.97); }
+  .btn.primary { background: var(--accent); color: var(--on-accent); }
+  .btn.primary:hover { background: #5d99ff; }
+  .btn.fire { color: #1b1206; font-weight: 650; background: var(--fire-fill); box-shadow: 0 0 16px var(--fire-glow); }
+  .btn.fire:hover { filter: brightness(1.07); }
+  .btn.danger:hover { background: rgba(var(--waiting-rgb),.22); }
+  .btn.danger.solid { background: var(--waiting); color: #fff; }
+  .btn.danger.solid:hover { filter: brightness(1.08); background: var(--waiting); }
+  .btn[disabled] { opacity: .4; pointer-events: none; }
+  .btn.small { height: 26px; padding: 0 10px; font-size: 12px; border-radius: 8px; }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .switch {
+    position: relative; flex: 0 0 auto; width: 40px; height: 24px; padding: 0; border: 0; border-radius: 999px; cursor: pointer;
+    background: rgba(var(--tint),.18); transition: background-color 280ms var(--liquid);
+  }
+  .switch::after {
+    content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 3px var(--shadow); transition: transform 420ms var(--spring);
+  }
+  .switch[aria-checked="true"] { background: var(--accent); }
+  .switch[aria-checked="true"]::after { transform: translateX(16px); }
+  :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  .seg { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); height: 32px; padding: 0; border-radius: 10px; background: rgba(var(--tint),.08); }
+  .seg i { position: absolute; top: 2px; left: 2px; height: 28px; border-radius: 8px; background: var(--accent); transition: transform 420ms var(--spring), width 420ms var(--spring); }
+  #themeSeg { grid-template-columns: repeat(3, 1fr); }
+  .seg button { position: relative; border: 0; background: none; cursor: pointer; font-size: 12px; transition: color 240ms var(--liquid); }
+  .seg button[aria-checked="true"] { color: var(--on-accent); }
+
+  .field { display: flex; gap: 6px; margin-top: 10px; }
+  input[type=text], input[type=password] {
+    flex: 1; min-width: 0; height: 32px; padding: 0 11px; border: 0; border-radius: 10px; outline: none;
+    background: var(--field-bg); box-shadow: inset 0 0 0 1px rgba(var(--tint),.10); color: var(--ink);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; -webkit-user-select: text; user-select: text;
+  }
+  input[type=text]:focus, input[type=password]:focus { box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .steps { margin: 10px 0 2px; padding-left: 20px; color: var(--ink-2); font-size: 12px; line-height: 19px; }
+  .steps li { margin: 3px 0; padding-left: 2px; }
+  .steps li::marker { color: var(--ember); font-weight: 600; }
+  .steps b { color: var(--ink); font-weight: 600; }
+  .steps code { padding: 0 4px; border-radius: 4px; background: rgba(var(--tint),.08); color: var(--ink); }
+  .fine { margin-top: 2px; font-size: 11px; line-height: 16px; color: var(--ink-3); }
+  .err { margin-top: 6px; font-size: 12px; color: var(--waiting); min-height: 17px; }
+  .route { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 12px; color: var(--ink-2); }
+  .led { width: 7px; height: 7px; border-radius: 50%; background: var(--copper); box-shadow: 0 0 8px rgba(var(--done-rgb),.6); }
+  .led.bad { background: var(--waiting); box-shadow: 0 0 8px rgba(var(--waiting-rgb),.6); }
+
+  .howto { margin: 2px 14px 12px 58px; padding: 10px 12px; border-radius: 10px; background: var(--field-bg); font-size: 12px; line-height: 18px; color: var(--ink-2); }
+  .howto .cmd { display: flex; align-items: center; gap: 8px; margin: 6px 0 2px; }
+  .howto code { flex: 1; padding: 5px 8px; border-radius: 7px; background: rgba(var(--tint),.07); color: var(--ink); -webkit-user-select: text; user-select: text; }
+
+  .version { display: flex; align-items: baseline; gap: 10px; }
+  .version b { font-size: 30px; line-height: 36px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .status { margin-top: 4px; color: var(--ink-2); }
+  .progress { height: 6px; margin-top: 12px; border-radius: 3px; background: rgba(var(--tint),.10); overflow: hidden; }
+  .progress i { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--fire-fill); transition: width 400ms var(--liquid); }
+  .notes { margin-top: 12px; padding: 12px 14px; max-height: 160px; overflow-y: auto; white-space: pre-wrap; font-size: 12px; line-height: 18px; color: var(--ink-2); -webkit-user-select: text; user-select: text; }
+
+  .kv { display: grid; grid-template-columns: 84px 1fr; gap: 6px 12px; padding: 12px 14px; font-size: 12px; }
+  .kv dt { color: var(--ink-3); } .kv dd { margin: 0; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
+
+  .setupBar { position: fixed; left: 168px; right: 0; bottom: 0; z-index: 4; display: flex; align-items: center; gap: 10px; padding: 12px 22px;
+    border-top: 1px solid var(--line); background: var(--bar-bg); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+  .setupBar[hidden] { display: none; }
+  .loginAsk { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; flex-wrap: wrap; }
+  .askQ { font-size: 12px; color: var(--ink); margin-right: 4px; }
+  .askDone { font-size: 12px; color: var(--ink-2); }
+  .btn.ghost { background: transparent; color: var(--ink-2); }
+  .btn.ghost:hover { background: rgba(var(--tint),.08); }
+  body.setup .pane { padding-bottom: 80px; }
+
+  /* ── 刘海 / 提醒（预览新增）────────────────────────────── */
+  .seg.n2 { grid-template-columns: repeat(2, 1fr); }
+  .seg.n3 { grid-template-columns: repeat(3, 1fr); }
+  .seg.n4 { grid-template-columns: repeat(4, 1fr); }
+  .seg.compact { height: 28px; }
+  .seg.compact i { height: 24px; }
+  .seg.compact button { font-size: 12px; }
+  .row:has(> .seg) { flex-direction: column; align-items: stretch; gap: 10px; }
+  .row { transition: opacity 240ms var(--liquid); }
+  .row.dim { opacity: .42; pointer-events: none; }
+  .note2 { margin: 8px 2px 0; font-size: 11px; line-height: 16px; color: var(--ink-3); }
+
+  .tryCard { padding: 14px; }
+  .tryCard .title { font-size: 14px; line-height: 20px; font-weight: 500; }
+  .tryCard .sub { font-size: 12px; line-height: 17px; color: var(--ink-2); }
+  .tryBtns { display: flex; gap: 8px; margin-top: 12px; }
+  .tryBtn { flex: 1; height: 38px; border: 0; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    font-size: 13px; font-weight: 600; cursor: pointer; transition: transform 160ms var(--liquid), filter 200ms var(--liquid), background-color 240ms var(--liquid); }
+  .tryBtn:active { transform: scale(.97); }
+  .tryBtn:hover { filter: brightness(1.12); }
+  .tryBtn.wait { background: rgba(var(--waiting-rgb),.14); color: var(--waiting); }
+  .tryBtn.done { background: rgba(var(--done-rgb),.14); color: var(--copper); }
+  .tryBtn.full { background: rgba(var(--tint),.08); color: var(--ink-2); }
+  .tryBtn.full[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+  .tryLog { margin-top: 10px; min-height: 17px; font-size: 12px; line-height: 17px; color: var(--ink-2); }
+  .tryLog span + span::before { content: '·'; margin: 0 6px; color: var(--ink-3); }
+  .tryLog .no { color: var(--ink-3); }
+
+  /* 提示音 */
+  .sndName { color: var(--ink); font-weight: 500; }
+  .pill.tent { color: var(--ember); background: rgba(255,138,43,.13); }
+  .iconBtn { width: 28px; height: 26px; padding: 0; }
+  .sndPick { padding: 2px 14px 14px; }
+  .sndPick .seg { margin-top: 2px; }
+  .grpLabel { margin: 14px 2px 6px; font-size: 11px; font-weight: 600; letter-spacing: .05em; color: var(--ink-3); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .tile { position: relative; display: flex; align-items: center; gap: 9px; min-height: 50px; padding: 7px 10px; border: 0; border-radius: 12px; cursor: pointer;
+    text-align: left; color: inherit; font: inherit; background: var(--tile); box-shadow: var(--tile-shadow);
+    transition: background-color 200ms var(--liquid), box-shadow 200ms var(--liquid); }
+  .tile:hover { background: var(--tile-hover); }
+  .tile .pl { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: rgba(var(--tint),.10); color: var(--ink-2);
+    transition: background-color 200ms var(--liquid), color 200ms var(--liquid); }
+  .tile .nm { font-size: 13px; line-height: 17px; font-weight: 500; }
+  .tile .ds { font-size: 11px; line-height: 15px; color: var(--ink-2); }
+  .tile.on { box-shadow: inset 0 0 0 1.5px var(--accent), var(--tile-shadow); }
+  .tile.on .pl { background: var(--accent); color: var(--on-accent); }
+  .tile.ping .pl { animation: ping 700ms var(--liquid); }
+  @keyframes ping { 0% { box-shadow: 0 0 0 0 rgba(var(--tint),.35); } 100% { box-shadow: 0 0 0 10px rgba(var(--tint),0); } }
+  .pickFoot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 11px; color: var(--ink-3); }
+  .slider { display: flex; align-items: center; gap: 10px; }
+  .slider input[type=range] { -webkit-appearance: none; appearance: none; width: 150px; height: 4px; border-radius: 2px; background: rgba(var(--tint),.18); outline: none; }
+  .slider input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px var(--shadow), inset 0 0 0 .5px rgba(0,0,0,.1); cursor: pointer; }
+  .slider span { width: 34px; text-align: right; font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+  /* 按工具 / 额度 */
+  .chips { display: flex; gap: 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 0; border-radius: 8px; cursor: pointer; font-size: 12px;
+    background: rgba(var(--tint),.07); color: var(--ink-3); transition: background-color 240ms var(--liquid), color 240ms var(--liquid); }
+  .chip i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: .5; }
+  .chip[aria-pressed="true"].wait { background: rgba(var(--waiting-rgb),.14); color: var(--waiting); }
+  .chip[aria-pressed="true"].done { background: rgba(var(--done-rgb),.14); color: var(--copper); }
+  .chip[aria-pressed="true"] i { opacity: 1; }
+  .money { display: flex; align-items: center; gap: 6px; }
+  .money input { width: 70px; flex: 0 0 auto; text-align: right; font-family: inherit; font-size: 13px; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition-duration: .01ms !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="logo" viewBox="0 0 24 24">
+      <path fill="#e0231c" d="M12 1C13.2 5.5 20 9 20 15.5C20 20 16.4 23 12 23C7.6 23 4 20 4 15.5C4 12.5 5.6 10 7.5 8.5C7.9 10.3 8.7 11.3 9.9 11.8C9.5 7.8 10.4 4 12 1Z"/>
+      <path fill="#ff7a2b" d="M12.5 8C13.3 11 17 13 17 17C17 20.2 14.8 22.3 12 22.3C9.2 22.3 7 20.2 7 17.2C7 15.4 7.9 14 9 13C9.3 14.2 9.8 14.9 10.7 15.3C10.5 12.6 11.2 10 12.5 8Z"/>
+      <path fill="#ffd84a" d="M12.3 14.5C12.8 16.2 14.7 17.2 14.7 19.2C14.7 20.8 13.5 21.8 12 21.8C10.5 21.8 9.3 20.8 9.3 19.3C9.3 17.7 11.6 16.5 12.3 14.5Z"/>
+    </symbol>
+    <symbol id="flame" viewBox="0 0 24 24"><path d="M12 2c1 3.6 6.5 6.2 6.5 12.2a6.5 6.5 0 0 1-13 0c0-2.6 1.3-4.6 2.9-5.9.3 1.7 1.1 2.8 2.3 3.3C10.5 8.3 10.7 5 12 2z"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+  <nav aria-label="设置分类">
+    <div class="brand"><svg width="22" height="22" viewBox="0 0 24 24"><use href="#logo"/></svg><span class="wordmark">Fire Ring</span></div>
+    <button class="navItem" data-pane="connect"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0V7zM12 16v5"/></svg>连接</button>
+    <button class="navItem" data-pane="notch"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M8.5 4v1.5a2 2 0 0 0 2 2h3a2 2 0 0 0 2-2V4"/></svg>刘海</button>
+    <button class="navItem" data-pane="alerts"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 21h4"/></svg>提醒</button>
+    <button class="navItem" data-pane="network"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>网络</button>
+    <button class="navItem" data-pane="general"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>通用</button>
+    <button class="navItem" data-pane="update"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>更新<span class="dot" id="updateDot" hidden></span></button>
+    <button class="navItem" data-pane="about"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>关于</button>
+    <div class="navFoot" id="navVersion"></div>
+  </nav>
+
+  <main>
+    <!-- 连接 -->
+    <section class="pane" id="pane-connect">
+      <h1>连接</h1>
+      <p class="lede">连接你在用的工具，Fire Ring 只显示已连接的。它读取这些工具在本机留下的记录，不上传任何对话内容。</p>
+      <div class="card" id="tools"></div>
+      <div id="deepseekBox" hidden>
+        <h2>DeepSeek 余额</h2>
+        <div class="card" style="padding:14px" id="deepseekCard"></div>
+      </div>
+    </section>
+
+    <!-- 刘海 -->
+    <section class="pane" id="pane-notch">
+      <h1>刘海</h1>
+      <p class="lede">刘海是 Fire Ring 最主要的提醒。这里决定它显示在哪、显示什么、什么时候弹出。</p>
+      <div class="card tryCard">
+        <div class="title">试一下</div>
+        <div class="sub">效果出现在屏幕顶部的刘海上</div>
+        <div class="tryBtns">
+          <button class="tryBtn wait" data-try="wait"><svg width="14" height="14" viewBox="0 0 24 24"><use href="#flame" fill="currentColor"/></svg>等你确认</button>
+          <button class="tryBtn done" data-try="done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>任务完成</button>
+        </div>
+        <div class="tryLog" id="notchLog"></div>
+      </div>
+
+      <h2>显示</h2>
+      <div class="card">
+        <div class="row">
+          <div class="text"><div class="title" id="l-island">刘海提示</div><div class="sub">关掉后只保留菜单栏图标，刘海不显示任何东西</div></div>
+          <button class="switch" data-key="island" role="switch" aria-labelledby="l-island"></button>
+        </div>
+        <div class="row" data-needs="island">
+          <div class="text"><div class="title">全屏 App 里</div><div class="sub">看视频、全屏写代码的时候</div></div>
+          <div class="seg n3 compact" data-seg="fullscreen" role="radiogroup" aria-label="全屏 App 里"><i></i>
+            <button data-value="hide" role="radio">收起</button><button data-value="waiting" role="radio">只在等你时显示</button><button data-value="show" role="radio">照常显示</button>
+          </div>
+        </div>
+      </div>
+
+      <h2>弹出</h2>
+      <div class="card">
+        <div class="row" data-needs="island">
+          <div class="text"><div class="title" id="l-peekDone">完成时自动弹出</div><div class="sub">任务做完时，刘海向下展开一张卡片</div></div>
+          <button class="switch" data-key="peekDone" role="switch" aria-labelledby="l-peekDone"></button>
+        </div>
+        <div class="row" data-needs="island">
+          <div class="text"><div class="title" id="l-peekWait">等你时自动弹出</div><div class="sub">需要你确认方案或批准操作时也展开</div></div>
+          <button class="switch" data-key="peekWait" role="switch" aria-labelledby="l-peekWait"></button>
+        </div>
+        <div class="row" data-needs="island">
+          <div class="text"><div class="title">弹出停留</div><div class="sub">卡片展开后多久自己收起，鼠标停在上面时不收</div></div>
+          <div class="seg n3 compact" data-seg="stay" role="radiogroup" aria-label="弹出停留"><i></i>
+            <button data-value="3" role="radio">3 秒</button><button data-value="6" role="radio">6 秒</button><button data-value="10" role="radio">10 秒</button>
+          </div>
+        </div>
+      </div>
+      <p class="note2">「刘海提示」「完成时自动弹出」「弹出停留」这几个常用开关，菜单栏面板里也能直接改。</p>
+    </section>
+
+    <!-- 提醒 -->
+    <section class="pane" id="pane-alerts">
+      <h1>提醒</h1>
+      <p class="lede">刘海之外再加一层：提示音和系统通知。没盯着屏幕顶部、开着全屏 App，或人不在电脑前时也不会错过。</p>
+      <div class="card tryCard">
+        <div class="title">试一下</div>
+        <div class="sub">刘海、通知、声音按现在的设置一起来一遍</div>
+        <div class="tryBtns">
+          <button class="tryBtn wait" data-try="wait"><svg width="14" height="14" viewBox="0 0 24 24"><use href="#flame" fill="currentColor"/></svg>等你确认</button>
+          <button class="tryBtn done" data-try="done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>任务完成</button>
+        </div>
+        <div class="tryLog" id="alertLog"></div>
+      </div>
+
+      <h2>提示音</h2>
+      <div class="card">
+        <div id="soundRows"></div>
+        <div class="row" style="border-top:1px solid var(--line)">
+          <div class="text"><div class="title">音量</div><div class="sub">只影响 Fire Ring 的提示音</div></div>
+          <div class="slider"><input type="range" min="0" max="100" step="5" id="volume" aria-label="音量"><span id="volText"></span></div>
+        </div>
+      </div>
+
+      <h2>系统通知</h2>
+      <div class="card">
+        <div class="row">
+          <div class="text"><div class="title">通知权限</div><div class="sub" id="permSub"></div></div>
+          <span class="pill off" id="permPill"></span>
+          <button class="btn small" id="permBtn"></button>
+        </div>
+        <div class="row">
+          <div class="text"><div class="title" id="l-nWait">等你时发通知</div><div class="sub">需要你回答问题、确认方案或批准操作</div></div>
+          <button class="switch" data-key="notifyWait" role="switch" aria-labelledby="l-nWait"></button>
+        </div>
+        <div class="row">
+          <div class="text"><div class="title" id="l-nDone">完成时发通知</div><div class="sub">一轮任务做完</div></div>
+          <button class="switch" data-key="notifyDone" role="switch" aria-labelledby="l-nDone"></button>
+        </div>
+        <div class="row">
+          <div class="text"><div class="title" id="l-nTitle">通知里显示任务标题</div><div class="sub">关掉后只写「Codex 有 1 个任务在等你」，锁屏时更隐私</div></div>
+          <button class="switch" data-key="notifyTitle" role="switch" aria-labelledby="l-nTitle"></button>
+        </div>
+      </div>
+
+      <h2>勿扰</h2>
+      <div class="card">
+        <div class="row">
+          <div class="text"><div class="title">一直没处理时再次提醒</div><div class="sub">任务一直在等你，隔一段时间再响一次，最多 3 次</div></div>
+          <div class="seg n4 compact" data-seg="remind" role="radiogroup" aria-label="再次提醒"><i></i>
+            <button data-value="0" role="radio">不再提醒</button><button data-value="5" role="radio">5 分钟后</button><button data-value="10" role="radio">10 分钟后</button><button data-value="30" role="radio">30 分钟后</button>
+          </div>
+        </div>
+        <div class="row">
+          <div class="text"><div class="title">暂停所有提醒</div><div class="sub" id="pauseSub"></div></div>
+          <div class="actions" id="pauseBtns"></div>
+        </div>
+      </div>
+
+      <h2>按工具</h2>
+      <div class="card" id="perTool"></div>
+      <p class="note2">点亮的才会响铃和发通知。刘海和菜单栏不受影响，照常显示。</p>
+
+      <h2>额度提醒</h2>
+      <div class="card">
+        <div class="row" id="quotaCodexRow">
+          <div class="text"><div class="title">Codex 额度</div><div class="sub">5 小时或每周剩余低于这个比例时提醒一次</div></div>
+          <div class="seg n4 compact" data-seg="codexLow" role="radiogroup" aria-label="Codex 额度提醒"><i></i>
+            <button data-value="0" role="radio">不提醒</button><button data-value="10" role="radio">10%</button><button data-value="20" role="radio">20%</button><button data-value="30" role="radio">30%</button>
+          </div>
+        </div>
+        <div class="row" id="quotaDsRow">
+          <div class="text"><div class="title" id="l-dsLow">DeepSeek 余额</div><div class="sub">余额低于这个金额时提醒一次</div></div>
+          <div class="money"><span style="color:var(--ink-2)">¥</span><input type="text" id="dsLow" inputmode="decimal" aria-label="DeepSeek 余额提醒金额"></div>
+          <button class="switch" data-key="dsLowOn" role="switch" aria-labelledby="l-dsLow"></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 网络 -->
+    <section class="pane" id="pane-network">
+      <h1>网络</h1>
+      <p class="lede">任务状态都在本机读取。只有查询 DeepSeek 余额、检查和下载更新需要联网，都走这里选的线路。</p>
+      <div class="card" style="padding:14px">
+        <div class="seg" id="proxySeg" role="radiogroup" aria-label="网络线路">
+          <i id="proxyThumb"></i>
+          <button data-mode="system" role="radio">跟随系统</button>
+          <button data-mode="custom" role="radio">指定代理</button>
+          <button data-mode="direct" role="radio">直连</button>
+          <button data-mode="off" role="radio">断网</button>
+        </div>
+        <div id="customBox" hidden>
+          <div class="field">
+            <input type="text" id="proxyUrl" placeholder="http://主机:端口" spellcheck="false" autocomplete="off" aria-label="代理地址">
+            <button class="btn primary" id="proxySave">保存</button>
+          </div>
+          <div class="sub" style="margin-top:6px;color:var(--ink-3);font-size:12px">只支持 HTTP 代理。指定后只走这一个代理，连不上时会暂停联网，不会改走别的线路。</div>
+        </div>
+        <div class="err" id="proxyErr"></div>
+        <div class="route"><span class="led" id="routeLed"></span><span id="routeText">—</span></div>
+      </div>
+    </section>
+
+    <!-- 通用 -->
+    <section class="pane" id="pane-general">
+      <h1>通用</h1>
+      <p class="lede">外观、菜单栏额度和开机启动。</p>
+      <h2>外观</h2>
+      <div class="card" style="padding:14px">
+        <div class="seg" id="themeSeg" role="radiogroup" aria-label="外观">
+          <i id="themeThumb"></i>
+          <button data-theme-pick="system" role="radio">跟随系统</button>
+          <button data-theme-pick="dark" role="radio">深色</button>
+          <button data-theme-pick="light" role="radio">浅色</button>
+        </div>
+        <div class="sub" style="margin-top:8px;color:var(--ink-3);font-size:12px">菜单栏面板和设置窗口的颜色。刘海始终是黑色。</div>
+      </div>
+      <h2>菜单栏显示额度</h2>
+      <div class="card" id="quotaSwitches"></div>
+      <h2>启动与日志</h2>
+      <div class="card">
+        <div class="row">
+          <div class="text"><div class="title" id="loginLabel">登录时自动打开</div><div class="sub" id="loginSub">开机后 Fire Ring 自己出现在菜单栏</div></div>
+          <button class="switch" id="loginItem" role="switch" aria-checked="false" aria-labelledby="loginLabel"></button>
+        </div>
+        <div class="row">
+          <div class="text"><div class="title">运行日志</div><div class="sub">排查问题时用，只记录状态变化，不含对话内容</div></div>
+          <button class="btn small" id="revealLogs">在访达中显示</button>
+        </div>
+      </div>
+      <h2>帮助</h2>
+      <div class="card">
+        <div class="row">
+          <div class="text"><div class="title">重新看欢迎引导</div><div class="sub">再看一次开场的火焰动画和连接向导</div></div>
+          <button class="btn small" id="replayWelcome">重新看</button>
+        </div>
+        <div class="row">
+          <div class="text"><div class="title">反馈问题</div><div class="sub">在 GitHub 上说说遇到了什么，附上诊断信息更好查</div></div>
+          <button class="btn small" id="feedback">去反馈</button>
+        </div>
+        <div class="row">
+          <div class="text"><div class="title">导出诊断信息</div><div class="sub" id="diagSub">版本、设置和最近的运行记录，存到「下载」文件夹。不含对话内容、API Key 和令牌</div></div>
+          <button class="btn small" id="exportDiag">导出</button>
+        </div>
+      </div>
+      <h2>重置与退出</h2>
+      <div class="card">
+        <div class="row">
+          <div class="text"><div class="title">重置设置</div><div class="sub" id="resetSub">外观、刘海、提醒和菜单栏额度恢复默认。已连接的工具、网络线路和 DeepSeek Key 不变</div></div>
+          <div class="actions" id="resetBtns"><button class="btn small danger" data-reset="ask">重置</button></div>
+        </div>
+        <div class="row">
+          <div class="text"><div class="title">退出 Fire Ring</div><div class="sub">刘海和菜单栏图标都会关闭，再次打开 App 即可恢复</div></div>
+          <button class="btn small danger" id="quit">退出</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 更新 -->
+    <section class="pane" id="pane-update">
+      <h1>更新</h1>
+      <p class="lede">新版本发布在 GitHub 上。下载后会先校验文件，再替换并重启 App。</p>
+      <div class="card" style="padding:16px 16px 14px">
+        <div class="version"><b id="curVersion">—</b><span class="pill off" id="updPill">—</span></div>
+        <div class="status" id="updStatus">—</div>
+        <div class="progress" id="updProgress" hidden><i id="updBar"></i></div>
+        <div class="actions" style="margin-top:14px">
+          <button class="btn fire" id="updAction" hidden></button>
+          <button class="btn" id="updCheck">检查更新</button>
+        </div>
+        <div class="err" id="updErr"></div>
+      </div>
+      <div class="card notes" id="updNotes" hidden></div>
+      <h2>设置</h2>
+      <div class="card">
+        <div class="row">
+          <div class="text"><div class="title" id="autoLabel">自动检查更新</div><div class="sub">每 6 小时看一次，有新版本时在菜单栏面板提示</div></div>
+          <button class="switch" id="autoCheck" role="switch" aria-checked="true" aria-labelledby="autoLabel"></button>
+        </div>
+        <div class="row">
+          <div class="text"><div class="title">发布页</div><div class="sub mono" id="repoText">—</div></div>
+          <button class="btn small" id="openReleases">打开</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 关于 -->
+    <section class="pane" id="pane-about">
+      <h1>关于</h1>
+      <div class="card" style="display:flex;align-items:center;gap:14px;padding:16px">
+        <svg width="44" height="44" viewBox="0 0 24 24" style="filter:drop-shadow(0 0 14px rgba(255,122,43,.55))"><use href="#logo"/></svg>
+        <div><div class="wordmark" style="font-size:20px">Fire Ring</div><div class="sub" style="color:var(--ink-2);font-size:12px" id="aboutVersion">—</div></div>
+      </div>
+      <h2>本机</h2>
+      <div class="card"><dl class="kv" id="aboutKv"></dl></div>
+      <h2>隐私</h2>
+      <div class="card" style="padding:12px 14px;color:var(--ink-2);font-size:12px;line-height:18px">
+        任务标题和状态只在本机读取，只在本机显示。DeepSeek 余额用你自己的 API Key 向 DeepSeek 查询；更新检查只访问 GitHub。Key 和凭据不会写进日志。
+      </div>
+      <h2>第三方组件</h2>
+      <div class="card" style="padding:12px 14px;color:var(--ink-2);font-size:12px;line-height:18px">
+        Node.js（MIT License）· Urbanist 字体（SIL Open Font License 1.1）。许可全文见 App 内的 LICENSES.md。
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="setupBar" id="setupBar" hidden>
+  <div class="loginAsk" id="setupAsk">
+    <span class="askQ">开机时自动打开？</span>
+    <button class="btn small primary" data-login="allow">允许</button>
+    <button class="btn small" data-login="deny">不允许</button>
+    <button class="btn small ghost" data-login="never">以后不再提醒</button>
+  </div>
+  <button class="btn fire" id="setupDone">完成设置</button>
+</div>
+
+<script>
+  const ENDPOINT = 'http://127.0.0.1:47821';
+  const $ = (id) => document.getElementById(id);
+  const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const api = (path, options = {}) => fetch(ENDPOINT + path, {
+    cache: 'no-store', ...options, headers: { 'X-Bridge-Token': window.__BRIDGE_TOKEN__ || '' },
+  });
+  const post = (path) => api(path, { method: 'POST' });
+  const send = (p) => window.webkit?.messageHandlers?.prefs?.postMessage(p);
+  const native = window.__NATIVE__ || {};
+  let info = null;
+  let pane = 'connect';
+  let setupMode = false;
+
+  // ── navigation ─────────────────────────────────────────
+  function show(next) {
+    if (!$('pane-' + next)) next = 'connect';
+    pane = next;
+    document.querySelectorAll('.navItem').forEach((b) => b.classList.toggle('on', b.dataset.pane === next));
+    document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === 'pane-' + next));
+    if (next === 'network') requestAnimationFrame(moveProxyThumb);
+    if (next === 'general') requestAnimationFrame(() => applyTheme(theme));
+    if (next === 'notch' || next === 'alerts') requestAnimationFrame(layoutSegs);
+    if (next === 'alerts') send({ kind: 'notifyStatus' });
+  }
+  document.querySelectorAll('.navItem').forEach((b) => b.addEventListener('click', () => show(b.dataset.pane)));
+
+  window.__jump = (section) => {
+    if (section === 'welcome') return startWelcome();
+    show(section);
+  };
+  window.__onShow = () => { refresh(); send({ kind: 'notifyStatus' }); };
+
+  // ── first launch ───────────────────────────────────────
+  // First setup opens straight on Connections, with the setup bar below; the
+  // welcome itself is the signature the app plays before this window opens.
+  function startWelcome() {
+    setupMode = true;
+    document.body.classList.add('setup');
+    $('setupBar').hidden = false;
+    show('connect');
+  }
+  // Launch at login, asked once during setup. "不允许" asks again on a later
+  // launch (in the menu-bar panel); "以后不再提醒" never asks again.
+  const LOGIN_ANSWER = { allow: '已开启：开机时会自动打开 Fire Ring', deny: '这次先不开启，以后还会提醒你', never: '不再提醒。需要时可以在「通用」里打开' };
+  $('setupAsk').addEventListener('click', (event) => {
+    const choice = event.target.closest('[data-login]')?.dataset.login;
+    if (!choice) return;
+    send({ kind: 'loginPrompt', choice });
+    if (choice === 'never') post('/config?loginPrompt=never').catch(() => {});
+    $('setupAsk').innerHTML = '<span class="askDone">' + LOGIN_ANSWER[choice] + '</span>';
+  });
+  $('setupDone').addEventListener('click', async () => {
+    await post('/config?onboarded=1').catch(() => {});
+    setupMode = false;
+    document.body.classList.remove('setup');
+    $('setupBar').hidden = true;
+    send({ kind: 'close' });
+  });
+
+  // ── connections ────────────────────────────────────────
+  const GLYPH = { claude: ['claude', 'C'], codex: ['codex', '◎'], dsh: ['dsh', 'D'] };
+  const pill = (kind, text) => '<span class="pill ' + kind + '">' + esc(text) + '</span>';
+
+  // One row per tool: connected or not, and a button to change it. A tool
+  // that is not connected is not read and does not appear in the notch or panel.
+  const READS = {
+    claude: '显示 Claude Code（桌面版和命令行）的任务',
+    codex: '显示 Codex 的任务和额度',
+    dsh: '显示 DeepSeek Harness 的任务，并装上插件：能提示等你回答的问题，点击直接打开对话',
+  };
+  const MISSING = {
+    claude: '本机没有找到 Claude Code 的记录，用过一次后就能连接',
+    codex: '本机没有找到 Codex 的记录（~/.codex），用过一次后就能连接',
+    dsh: '本机没有找到 DeepSeek Harness',
+  };
+  function toolRow(t) {
+    const [cls, letter] = GLYPH[t.id] || ['codex', '?'];
+    let sub;
+    let right;
+    if (t.connected) {
+      sub = READS[t.id];
+      if (t.id === 'dsh' && t.plugin === 'broken') sub = '插件链接损坏了，点「重新连接」即可';
+      if (t.id === 'dsh' && t.plugin === 'off') sub = '插件不见了，点「重新连接」装回去';
+      if (t.id === 'dsh' && t.plugin === 'on' && t.live === false) sub = '重启一次 DeepSeek Harness，在跑和完成会显示得更及时（它没在运行时可以忽略）';
+      const repair = t.id === 'dsh' && (t.plugin === 'broken' || t.plugin === 'off');
+      right = pill('ok', '已连接') + ' ' + (repair
+        ? '<button class="btn small primary" data-provider="' + t.id + '" data-on="1">重新连接</button>'
+        : '<button class="btn small" data-provider="' + t.id + '" data-on="0">断开</button>');
+    } else if (!t.found) {
+      sub = MISSING[t.id];
+      right = pill('off', '未连接');
+    } else if (t.id === 'dsh' && t.plugin === 'no_profile') {
+      sub = '请先打开一次 DeepSeek Harness，再回来连接';
+      right = pill('off', '未连接');
+    } else {
+      sub = {
+        claude: '本机已安装。连接后显示它的任务',
+        codex: '本机已安装。连接后显示它的任务和额度',
+        dsh: '本机已安装。连接后显示它的任务，并装上一个小插件；需要重启 DeepSeek Harness 生效',
+      }[t.id];
+      right = pill('off', '未连接') + ' <button class="btn small primary" data-provider="' + t.id + '" data-on="1">连接</button>';
+    }
+    return '<div class="row"><div class="glyph ' + cls + '">' + letter + '</div><div class="text"><div class="title">' + esc(t.name) +
+      '</div><div class="sub" id="sub-' + t.id + '">' + esc(sub) + '</div></div>' + right + '</div>';
+  }
+
+  function renderConnect() {
+    $('tools').innerHTML = info.tools.map(toolRow).join('');
+    renderDeepSeek();
+  }
+
+  // ── DeepSeek balance: the user's own API key, kept in the keychain ──
+  const money = (currency, n) => (currency === 'CNY' ? '¥' : currency === 'USD' ? '$' : currency + ' ') + Number(n).toFixed(2);
+  const DS_STATE = {
+    ok: ['ok', '已连接'],
+    loading: ['off', '查询中'],
+    bad_key: ['warn', 'Key 无效'],
+    rate_limited: ['off', '稍后重试'],
+    egress_down: ['warn', '网络不通'],
+    offline: ['off', '已断网'],
+    error: ['off', '暂时查不到'],
+    unknown: ['off', '暂无数据'],
+    no_key: ['off', '未填 Key'],
+  };
+  function renderDeepSeek() {
+    const tool = info.tools.find((t) => t.id === 'dsh');
+    $('deepseekBox').hidden = !(tool && tool.connected);
+    if ($('deepseekBox').hidden) return;
+    const d = info.deepseek || {};
+    const card = $('deepseekCard');
+    if (!d.hasKey) {
+      if (card.dataset.mode === 'form') return;   // keep what is being typed
+      card.dataset.mode = 'form';
+      card.innerHTML =
+        '<div class="sub" style="color:var(--ink-2);font-size:12px;line-height:18px">填入你自己的 DeepSeek API Key，Fire Ring 就能用 DeepSeek 官方接口查询账户余额，显示在菜单栏里。</div>' +
+        '<ol class="steps">' +
+          '<li><a id="dsCreate">打开 DeepSeek 开放平台</a>，用和 DeepSeek Harness <b>同一个账号</b>登录</li>' +
+          '<li>在左侧菜单进入「API keys」，点「创建 API key」，名字随便填，比如 Fire Ring</li>' +
+          '<li>复制以 <code>sk-</code> 开头的 Key。<b>它只显示这一次</b>，关掉前记得复制</li>' +
+          '<li>粘贴到下面，点「保存」。保存时会马上查一次余额</li>' +
+        '</ol>' +
+        '<div class="field"><input type="password" id="dsKey" placeholder="粘贴 sk- 开头的 API Key" spellcheck="false" autocomplete="off" aria-label="DeepSeek API Key">' +
+        '<button class="btn primary" id="dsSave">保存</button></div><div class="err" id="dsErr"></div>' +
+        '<div class="fine">Key 只存在这台 Mac 的钥匙串里，只用来查询余额（每 10 分钟一次），不会显示、不会写进日志。不想用了可以在这里删除，也可以在 DeepSeek 开放平台把这个 Key 作废。</div>';
+      return;
+    }
+    card.dataset.mode = 'saved';
+    const [kind, label] = DS_STATE[d.stale ? 'ok' : d.state] || DS_STATE.error;
+    const main = (d.balances || [])[0];
+    const text = d.state === 'bad_key' ? 'DeepSeek 不接受这个 Key，请删除后重新填写'
+      : main ? '余额 ' + money(main.currency, main.total) + (d.available === false ? '（余额不足，无法调用）' : '') + (d.stale ? '（旧数据）' : '')
+        : d.state === 'egress_down' ? '连不上 DeepSeek' + (d.detail ? '：' + d.detail : '')
+          : d.state === 'offline' ? '断网模式下不查询' : '在菜单栏打开 DeepSeek 额度后，每 10 分钟查一次';
+    card.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><div class="text" style="flex:1"><div class="title" style="font-size:14px">API Key 已保存</div>' +
+      '<div class="sub" style="color:var(--ink-2);font-size:12px">' + esc(text) + '</div></div>' + pill(kind, label) + '</div>' +
+      '<div class="actions" style="margin-top:12px"><button class="btn small" id="dsRecheck">重新查询</button><button class="btn small danger" id="dsDelete">删除 Key</button></div><div class="err" id="dsErr"></div>';
+  }
+  async function saveDeepSeekKey() {
+    const input = $('dsKey');
+    const key = input ? input.value.trim() : '';
+    $('dsErr').textContent = '';
+    if (!/^sk-[A-Za-z0-9_-]{16,}$/.test(key)) { $('dsErr').textContent = 'API Key 的格式不对，应以 sk- 开头'; return; }
+    $('dsSave').disabled = true;
+    try {
+      const r = await api('/deepseek/key', { method: 'POST', body: JSON.stringify({ key }) });
+      const body = await r.json();
+      if (!r.ok || !body.ok) throw new Error(body.error || r.status);
+      input.value = '';
+      $('deepseekCard').dataset.mode = '';
+      if (body.state === 'bad_key') $('dsErr').textContent = 'DeepSeek 不接受这个 Key';
+    } catch (error) {
+      $('dsErr').textContent = '没能保存：' + error.message;
+    } finally {
+      if ($('dsSave')) $('dsSave').disabled = false;
+    }
+    refresh();
+  }
+  document.addEventListener('click', async (event) => {
+    const id = event.target.id;
+    if (id === 'dsCreate') send({ kind: 'openURL', url: 'https://platform.deepseek.com/api_keys' });
+    if (id === 'dsSave') saveDeepSeekKey();
+    if (id === 'dsRecheck') {
+      event.target.disabled = true;
+      await post('/deepseek/recheck').catch(() => {});
+      refresh();
+    }
+    if (id === 'dsDelete') {
+      await post('/deepseek/key?clear=1').catch(() => {});
+      $('deepseekCard').dataset.mode = '';
+      refresh();
+    }
+  });
+  document.addEventListener('keydown', (e) => { if (e.target.id === 'dsKey' && e.key === 'Enter') saveDeepSeekKey(); });
+
+  document.addEventListener('click', async (event) => {
+    const toggle = event.target.closest('[data-provider]');
+    if (toggle) {
+      toggle.disabled = true;
+      const id = toggle.dataset.provider;
+      try {
+        const r = await (await post('/setup/provider?id=' + id + '&on=' + toggle.dataset.on)).json();
+        if (!r.ok) throw new Error(r.error);
+      } catch (error) {
+        const sub = $('sub-' + id);
+        if (sub) { sub.textContent = '没能完成：' + error.message; sub.style.color = 'var(--waiting)'; }
+        toggle.disabled = false;
+        return;
+      }
+      refresh();
+      return;
+    }
+  });
+
+  // ── network ────────────────────────────────────────────
+  let proxyMode = 'system';
+  function moveProxyThumb() {
+    const b = document.querySelector('#proxySeg button[data-mode="' + proxyMode + '"]');
+    if (!b || !b.offsetWidth) return;
+    $('proxyThumb').style.width = (b.offsetWidth - 4) + 'px';
+    $('proxyThumb').style.transform = 'translateX(' + b.offsetLeft + 'px)';
+    document.querySelectorAll('#proxySeg button').forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+  }
+  function renderNetwork(force) {
+    if (force || document.activeElement !== $('proxyUrl')) {
+      proxyMode = info.config.proxy.mode;
+      if (force || !$('proxyUrl').value) $('proxyUrl').value = info.config.proxy.url || '';
+    }
+    $('customBox').hidden = proxyMode !== 'custom';
+    moveProxyThumb();
+    $('routeText').textContent = '当前线路：' + info.route.label + (info.route.error ? '（' + info.route.error + '）' : '');
+    $('routeLed').classList.toggle('bad', Boolean(info.route.error));
+  }
+  async function saveProxy(mode) {
+    $('proxyErr').textContent = '';
+    const url = $('proxyUrl').value.trim();
+    if (mode === 'custom' && !url) {
+      proxyMode = 'custom';
+      $('customBox').hidden = false;
+      moveProxyThumb();
+      $('proxyUrl').focus();
+      return;
+    }
+    try {
+      const r = await post('/config?proxyMode=' + mode + (mode === 'custom' ? '&proxyUrl=' + encodeURIComponent(url) : ''));
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.error || r.status);
+      info.config = body.config;
+      info.route = body.route;
+      renderNetwork(true);
+    } catch (error) {
+      $('proxyErr').textContent = error.message;
+    }
+  }
+  document.querySelectorAll('#proxySeg button').forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.mode === 'custom') {
+      proxyMode = 'custom';
+      $('customBox').hidden = false;
+      moveProxyThumb();
+      if ($('proxyUrl').value.trim()) saveProxy('custom'); else $('proxyUrl').focus();
+    } else {
+      saveProxy(b.dataset.mode);
+    }
+  }));
+  $('proxySave').addEventListener('click', () => saveProxy('custom'));
+  $('proxyUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveProxy('custom'); });
+
+  // ── general ────────────────────────────────────────────
+  // Appearance: follow macOS, or always dark / light. Applied here at once and
+  // handed to the app for the window glass; the menu panel follows on its own.
+  let theme = 'dark';
+  function applyTheme(next) {
+    theme = next;
+    document.documentElement.dataset.theme = next;
+    const b = document.querySelector('#themeSeg button[data-theme-pick="' + next + '"]');
+    document.querySelectorAll('#themeSeg button').forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+    if (b && b.offsetWidth) {
+      $('themeThumb').style.width = (b.offsetWidth - 4) + 'px';
+      $('themeThumb').style.transform = 'translateX(' + b.offsetLeft + 'px)';
+    }
+  }
+  document.querySelectorAll('#themeSeg button').forEach((b) => b.addEventListener('click', async () => {
+    const next = b.dataset.themePick;
+    applyTheme(next);
+    send({ kind: 'theme', value: next });
+    await post('/config?theme=' + next).catch(() => {});
+  }));
+
+  // Which tools' limits the menu-bar panel shows. Only connected tools can be shown.
+  const QUOTA_ROWS = [
+    ['claude', 'Claude Code', '桌面版不提供实时百分比，打开后只在额度用完时提醒几点重置'],
+    ['codex', 'Codex', '5 小时和每周的剩余额度，以及重置时间'],
+    ['dsh', 'DeepSeek', '账户余额，每 10 分钟查一次（需要先在「连接」里填 API Key）'],
+  ];
+  function renderQuotaSwitches() {
+    const shown = info.config.quota || {};
+    $('quotaSwitches').innerHTML = QUOTA_ROWS.map(([id, name, sub]) => {
+      const tool = info.tools.find((t) => t.id === id);
+      const connected = Boolean(tool && tool.connected);
+      return '<div class="row"><div class="text"><div class="title" id="q-' + id + '">' + esc(name) + '</div><div class="sub">' +
+        esc(connected ? sub : '先在「连接」里连接 ' + name) + '</div></div>' +
+        '<button class="switch" data-quota="' + id + '" role="switch" aria-labelledby="q-' + id + '" aria-checked="' + (connected && shown[id] === true) + '"' +
+        (connected ? '' : ' disabled style="opacity:.4"') + '></button></div>';
+    }).join('');
+  }
+  document.addEventListener('click', async (event) => {
+    const el = event.target.closest('[data-quota]');
+    if (!el || el.disabled) return;
+    const next = el.getAttribute('aria-checked') !== 'true';
+    el.setAttribute('aria-checked', String(next));
+    try {
+      const r = await post('/config?quota_' + el.dataset.quota + '=' + (next ? 1 : 0));
+      const body = await r.json();
+      if (!r.ok) throw new Error(body.error || r.status);
+      info.config = body.config;
+    } catch {
+      el.setAttribute('aria-checked', String(!next));
+    }
+  });
+
+  function renderLogin(state) {
+    $('loginItem').setAttribute('aria-checked', String(Boolean(state.loginItem)));
+    $('loginSub').innerHTML = state.loginItemNeedsApproval
+      ? '需要在系统设置里允许。<a id="openLoginSettings">打开「登录项」</a>'
+      : state.error ? esc('没能设置：' + state.error) : '开机后 Fire Ring 自己出现在菜单栏';
+  }
+  renderLogin(native);
+  $('loginItem').addEventListener('click', () => send({ kind: 'loginItem', on: $('loginItem').getAttribute('aria-checked') !== 'true' }));
+  document.addEventListener('click', (e) => { if (e.target.id === 'openLoginSettings') send({ kind: 'openLoginItemSettings' }); });
+  $('revealLogs').addEventListener('click', () => send({ kind: 'revealLogs' }));
+  $('quit').addEventListener('click', () => send({ kind: 'quit' }));
+
+  window.__native = (msg) => {
+    if ('loginItem' in msg) renderLogin(msg);
+    if ('notify' in msg) onPermission(msg.notify, msg.notifyError);
+    if ('diagName' in msg || 'diagError' in msg) onDiagnostics(msg);
+    if (msg.installError) $('updErr').textContent = msg.installError;
+  };
+
+  // ── updates ────────────────────────────────────────────
+  const ago = (t) => {
+    if (!t) return '';
+    const m = Math.round((Date.now() - t) / 60000);
+    return m < 1 ? '刚刚' : m < 60 ? m + ' 分钟前' : Math.round(m / 60) + ' 小时前';
+  };
+  function renderUpdate() {
+    const u = info.update;
+    $('curVersion').textContent = 'v' + info.version;
+    $('navVersion').textContent = 'v' + info.version;
+    const latest = u.latest && u.latest.version;
+    const PHASE = {
+      unconfigured: ['off', '未配置', '这个版本没有设置发布仓库，无法检查更新'],
+      offline: ['off', '已断网', '断网模式下不检查更新，可在「网络」里恢复联网'],
+      idle: ['off', '等待检查', '启动一分钟后会自动检查'],
+      checking: ['off', '检查中', '正在检查…'],
+      latest: ['ok', '最新', '已是最新版本' + (u.checkedAt ? '，' + ago(u.checkedAt) + '检查' : '')],
+      available: ['warn', '有新版本', '发现新版本 v' + latest],
+      downloading: ['warn', '下载中', '正在下载 v' + latest + (u.progress ? ' · ' + Math.round(u.progress * 100) + '%' : '')],
+      ready: ['ok', '已下载', 'v' + latest + ' 已下载并校验通过'],
+      error: ['warn', '出错了', u.error || '检查更新失败'],
+    };
+    const [kind, label, text] = PHASE[u.phase] || PHASE.idle;
+    $('updPill').className = 'pill ' + kind;
+    $('updPill').textContent = label;
+    $('updStatus').textContent = text;
+    $('updProgress').hidden = u.phase !== 'downloading';
+    $('updBar').style.width = Math.round((u.progress || 0) * 100) + '%';
+    $('updCheck').disabled = u.phase === 'checking' || u.phase === 'downloading' || u.phase === 'unconfigured' || info.route.offline;
+
+    const action = $('updAction');
+    action.hidden = !['available', 'ready', 'error'].includes(u.phase) || !latest || (u.phase === 'error' && !u.latest);
+    action.disabled = false;
+    if (u.phase === 'available' || u.phase === 'error') action.textContent = '下载更新';
+    if (u.phase === 'ready') {
+      action.textContent = '安装并重启';
+      if (!u.install.ok) {
+        action.disabled = true;
+        $('updErr').textContent = u.install.reason;
+      }
+    }
+    if (u.phase === 'available' && (!u.latest.zip || !u.latest.sha256Url)) {
+      action.disabled = true;
+      $('updErr').textContent = '这个版本没有适合本机芯片（' + u.arch + '）的安装文件，请到发布页手动下载';
+    }
+    $('updNotes').hidden = !(latest && u.latest.notes && u.phase !== 'latest');
+    $('updNotes').textContent = latest ? 'v' + latest + ' 更新内容\n\n' + (u.latest.notes || '') : '';
+    $('updateDot').hidden = !['available', 'ready'].includes(u.phase);
+    $('autoCheck').setAttribute('aria-checked', String(u.autoCheck !== false));
+    $('repoText').textContent = u.repo ? 'github.com/' + u.repo : '未设置';
+    $('openReleases').disabled = !u.repo;
+  }
+  $('updCheck').addEventListener('click', async () => {
+    $('updErr').textContent = '';
+    await post('/update/check').catch(() => {});
+    setTimeout(refresh, 300);
+  });
+  $('updAction').addEventListener('click', async () => {
+    $('updErr').textContent = '';
+    if (info.update.phase === 'ready') {
+      $('updAction').disabled = true;
+      $('updAction').textContent = '正在重启…';
+      send({ kind: 'installUpdate', staged: info.update.staged });
+      return;
+    }
+    await post('/update/download').catch(() => {});
+    setTimeout(refresh, 300);
+  });
+  $('autoCheck').addEventListener('click', async () => {
+    const next = $('autoCheck').getAttribute('aria-checked') !== 'true';
+    $('autoCheck').setAttribute('aria-checked', String(next));
+    await post('/config?autoCheck=' + (next ? 1 : 0)).catch(() => {});
+  });
+  $('openReleases').addEventListener('click', () => {
+    if (info?.update.repo) send({ kind: 'openURL', url: 'https://github.com/' + info.update.repo + '/releases' });
+  });
+
+  // ── about ──────────────────────────────────────────────
+  function renderAbout() {
+    $('aboutVersion').textContent = '版本 ' + info.version + ' · ' + (info.update.arch === 'arm64' ? 'Apple 芯片' : 'Intel 芯片');
+    const rows = [
+      ['App 位置', native.appPath || '—'],
+      ['系统', native.macOS || '—'],
+      ['数据目录', '~/Library/Application Support/Fire Ring'],
+      ['日志', '~/Library/Logs/Fire Ring/bridge.log'],
+    ];
+    $('aboutKv').innerHTML = rows.map(([k, v]) => '<dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd>').join('');
+  }
+
+  // ── 刘海 / 提醒 ────────────────────────────────────────
+  // 刘海的选项存在后台的 state.json（菜单栏面板也改同一份），提醒的选项存在 config.json。
+  let notch = null;
+  let alerts = null;
+  let permission = 'unknown';   // 系统通知权限：granted | denied | unknown
+  const saveAlerts = async (patch) => {
+    try {
+      const r = await api('/alerts/prefs', { method: 'POST', body: JSON.stringify(patch) });
+      const body = await r.json();
+      if (r.ok && body.alerts) alerts = body.alerts;
+    } catch { /* 下一次刷新会画回真实的值 */ }
+    renderAlerts();
+  };
+  const saveNotch = (query) => post('/notch-prefs?' + query).catch(() => {});
+
+  // 分段选择和开关：每一项从哪里读、改了存到哪里
+  const SEG = {
+    fullscreen: [() => notch.fullscreen, (v) => { notch.fullscreen = v; saveNotch('fullscreen=' + v); }],
+    stay: [() => String(notch.peekSeconds), (v) => { notch.peekSeconds = Number(v); post('/peek-seconds?value=' + v).catch(() => {}); }],
+    remind: [() => String(alerts.remind), (v) => { alerts.remind = Number(v); saveAlerts({ remind: Number(v) }); }],
+    codexLow: [() => String(alerts.codexLow), (v) => { alerts.codexLow = Number(v); saveAlerts({ codexLow: Number(v) }); }],
+  };
+  const SWITCH = {
+    island: [() => notch.islandEnabled, (v) => { notch.islandEnabled = v; post('/island?enabled=' + (v ? 1 : 0)).catch(() => {}); }],
+    peekDone: [() => notch.autoPeek, (v) => { notch.autoPeek = v; post('/autopeek?enabled=' + (v ? 1 : 0)).catch(() => {}); }],
+    peekWait: [() => notch.peekWait, (v) => { notch.peekWait = v; saveNotch('peekWait=' + (v ? 1 : 0)); }],
+    notifyWait: [() => alerts.notify.wait, (v) => { alerts.notify.wait = v; saveAlerts({ notify: { wait: v } }); }],
+    notifyDone: [() => alerts.notify.done, (v) => { alerts.notify.done = v; saveAlerts({ notify: { done: v } }); }],
+    notifyTitle: [() => alerts.notify.title, (v) => { alerts.notify.title = v; saveAlerts({ notify: { title: v } }); }],
+    dsLowOn: [() => alerts.dsLow.on, (v) => { alerts.dsLow.on = v; saveAlerts({ dsLow: { on: v } }); }],
+  };
+
+  function moveSeg(seg) {
+    const bind = SEG[seg.dataset.seg];
+    if (!bind || !notch || !alerts) return;
+    const b = seg.querySelector('button[data-value="' + bind[0]() + '"]');
+    seg.querySelectorAll('button').forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+    if (!b || !b.offsetWidth) return;
+    const thumb = seg.querySelector('i');
+    thumb.style.width = (b.offsetWidth - 4) + 'px';
+    thumb.style.transform = 'translateX(' + b.offsetLeft + 'px)';
+  }
+  const layoutSegs = () => document.querySelectorAll('[data-seg]').forEach(moveSeg);
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-seg] button[data-value]');
+    if (!b || !notch || !alerts) return;
+    const seg = b.closest('[data-seg]');
+    SEG[seg.dataset.seg][1](b.dataset.value);
+    moveSeg(seg);
+  });
+  document.addEventListener('click', (e) => {
+    const s = e.target.closest('.switch[data-key]');
+    if (!s || !notch || !alerts) return;
+    SWITCH[s.dataset.key][1](!SWITCH[s.dataset.key][0]());
+    renderNotchAndAlerts();
+  });
+
+  function renderSwitches() {
+    document.querySelectorAll('.switch[data-key]').forEach((s) => s.setAttribute('aria-checked', String(Boolean(SWITCH[s.dataset.key][0]()))));
+    document.querySelectorAll('[data-needs="island"]').forEach((r) => r.classList.toggle('dim', !notch.islandEnabled));
+    $('dsLow').disabled = !alerts.dsLow.on;
+    $('dsLow').style.opacity = alerts.dsLow.on ? 1 : .4;
+  }
+
+  // ── 提示音 ──
+  const SOUNDS = [
+    ['fr-rise', '上扬', '两声往上走，干脆利落'], ['fr-arp', '三连音', '大三和弦一路向上，像打了个勾'],
+    ['fr-crystal', '水晶', '一声清亮的水晶音，余韵长'], ['fr-drop', '水滴', '两颗水滴，轻巧不打扰'],
+    ['fr-kalimba', '拇指琴', '温柔的拇指琴，三个音'], ['fr-chord', '收尾和弦', '柔和的电钢琴和弦，有收尾感'],
+    ['fr-spark', '火花', '一串细碎的亮光'], ['fr-call', '轻唤', '两声轻唤，像有人叫你'],
+    ['fr-ask', '问询', '往上扬的问句，等你回答'], ['fr-door', '门铃', '叮——咚，有事找你'],
+    ['fr-knock', '敲门', '两下轻轻的敲门声'], ['fr-pulse', '脉冲', '三下柔和的提示'],
+    ['fr-ember', '火苗', '一阵火苗声，带一点暖意'],
+    ['mac-Glass', '玻璃', '清脆的一声玻璃响'], ['mac-Hero', '英雄', '明亮上扬，像小号角'], ['mac-Ping', '乒', '短促清亮的一声'],
+    ['mac-Pop', '砰', '轻轻一声，像气泡破了'], ['mac-Tink', '叮', '很轻很短的一声叮'], ['mac-Purr', '呼噜', '低低的呼噜声'],
+    ['mac-Submarine', '潜水艇', '声呐一样的回响'], ['mac-Blow', '吹气', '一口气吹过'], ['mac-Bottle', '瓶子', '敲一下玻璃瓶'],
+    ['mac-Frog', '青蛙', '呱的一声'], ['mac-Funk', '放克', '带点节奏的低音'], ['mac-Morse', '莫尔斯', '电报的嘀嗒声'],
+    ['mac-Sosumi', 'Sosumi', '经典的 Mac 提示音'], ['mac-Basso', '低音', '低沉的一声'],
+  ].map(([id, name, desc]) => ({ id, name, desc }));
+  const findSound = (id) => SOUNDS.find((s) => s.id === id);
+  const soundName = (id) => (id === 'none' ? '不响' : (findSound(id) || {}).name || '—');
+  const soundDesc = (id) => (id === 'none' ? '只看刘海和通知，不出声' : (findSound(id) || {}).desc || '');
+  const playSound = (id) => { if (id && id !== 'none') send({ kind: 'playSound', sound: id, volume: alerts.volume }); };
+  const PLAY_ICON = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></svg>';
+  const CHECK_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  let openPick = null;
+  let soundsDrawn = '';
+  function renderSounds() {
+    const key = JSON.stringify([alerts.sounds, openPick]);
+    if (key === soundsDrawn) return;
+    soundsDrawn = key;
+    const rows = [['wait', '等你'], ['done', '完成']];
+    $('soundRows').innerHTML = rows.map(([which, label]) => {
+      const id = alerts.sounds[which];
+      const open = openPick === which;
+      const picker = !open ? '' : '<div class="sndPick"><div class="grid">' + SOUNDS.map((s) =>
+        '<button class="tile' + (s.id === id ? ' on' : '') + '" data-pick="' + which + '" data-id="' + s.id + '"><span class="pl">' + (s.id === id ? CHECK_ICON : PLAY_ICON) +
+        '</span><span><div class="nm">' + esc(s.name) + '</div><div class="ds">' + esc(s.desc) + '</div></span></button>').join('') + '</div>' +
+        '<div class="pickFoot"><span>点一下就能试听，同时选中</span><button class="btn small ghost" data-pick="' + which + '" data-id="none">不要声音</button></div></div>';
+      return '<div class="row"' + (which === 'done' ? ' style="border-top:1px solid var(--line)"' : '') + '><div class="text"><div class="title">' + label + '</div>' +
+        '<div class="sub"><span class="sndName">' + esc(soundName(id)) + '</span> · ' + esc(soundDesc(id)) + '</div></div>' +
+        (id !== 'none' ? '<button class="btn small iconBtn" data-audition="' + which + '" aria-label="试听">' + PLAY_ICON + '</button>' : '') +
+        '<button class="btn small' + (open ? ' primary' : '') + '" data-toggle-pick="' + which + '">' + (open ? '收起' : '换一个') + '</button></div>' + picker;
+    }).join('');
+  }
+  document.addEventListener('click', (e) => {
+    if (!alerts) return;
+    const t = e.target.closest('[data-toggle-pick]');
+    if (t) { openPick = openPick === t.dataset.togglePick ? null : t.dataset.togglePick; renderSounds(); return; }
+    const a = e.target.closest('[data-audition]');
+    if (a) { playSound(alerts.sounds[a.dataset.audition]); return; }
+    const p = e.target.closest('[data-pick]');
+    if (p) {
+      alerts.sounds[p.dataset.pick] = p.dataset.id;
+      playSound(p.dataset.id);
+      renderSounds();
+      const again = document.querySelector('.tile[data-id="' + p.dataset.id + '"]');
+      if (again) { again.classList.add('ping'); setTimeout(() => again.classList.remove('ping'), 700); }
+      saveAlerts({ sounds: { [p.dataset.pick]: p.dataset.id } });
+    }
+  });
+  $('volume').addEventListener('input', () => { alerts.volume = Number($('volume').value); $('volText').textContent = alerts.volume + '%'; });
+  $('volume').addEventListener('change', () => { saveAlerts({ volume: alerts.volume }); playSound(alerts.sounds.done); });
+
+  // ── 系统通知权限（由 App 向 macOS 询问） ──
+  function renderPermission() {
+    const st = {
+      granted: ['ok', '已允许', '通知样式', '横幅样式、锁屏显示可以在 macOS「系统设置 → 通知」里改'],
+      denied: ['warn', '未允许', '去系统设置打开', '现在只有刘海和提示音会提醒你'],
+      unknown: ['off', '还没询问', '允许通知', '第一次发通知时，macOS 会问你一次'],
+    }[permission] || [];
+    $('permPill').className = 'pill ' + st[0];
+    $('permPill').textContent = st[1];
+    $('permBtn').textContent = st[2];
+    $('permSub').textContent = st[3];
+  }
+  let pendingTry = null;
+  $('permBtn').addEventListener('click', () => {
+    if (permission === 'unknown') send({ kind: 'notifyRequest' });
+    else send({ kind: 'openNotificationSettings' });
+  });
+  function onPermission(value, error) {
+    permission = ['granted', 'denied'].includes(value) ? value : 'unknown';
+    renderPermission();
+    if (error) $('permSub').textContent = '没能向 macOS 申请通知：' + error;
+    if (pendingTry) { const k = pendingTry; pendingTry = null; runTry(k, true); }
+  }
+
+  // ── 试一下：刘海、通知、声音按现在的设置演示一遍 ──
+  const TRY = {
+    wait: { tool: 'codex', toolName: 'Codex', title: 'Codex 在等你', body: '要不要删除旧的构建目录？', plain: 'Codex 有 1 个任务在等你' },
+    done: { tool: 'claude', toolName: 'Claude Code', title: 'Claude Code 完成了', body: '重构设置窗口', plain: 'Claude Code 有 1 个任务完成了' },
+  };
+  function runTry(kind, afterAsking) {
+    if (!notch || !alerts) return;
+    const t = TRY[kind];
+    const name = kind === 'wait' ? '等你' : '完成';
+    const log = [];
+    const no = (text) => log.push('<span class="no">' + esc(text) + '</span>');
+    if (!notch.islandEnabled) no('刘海没弹：刘海提示已关');
+    else if (!(kind === 'wait' ? notch.peekWait : notch.autoPeek)) no('刘海没弹：' + name + '时自动弹出已关');
+    else { post('/demo?kind=' + kind).catch(() => {}); log.push('<span>刘海弹出 ' + notch.peekSeconds + ' 秒</span>'); }
+
+    const paused = alerts.pausedUntil > Date.now();
+    const toolOff = !alerts.tools[t.tool][kind];
+    const notifyOn = alerts.notify[kind];
+    let notify = false;
+    if (paused) no('没发通知：提醒已暂停');
+    else if (!notifyOn) no('没发通知：' + name + '时发通知已关');
+    else if (toolOff) no('没发通知：' + t.toolName + ' 的「' + name + '」提醒已关');
+    else if (permission === 'unknown' && !afterAsking) { pendingTry = kind; send({ kind: 'notifyRequest' }); return; }
+    else if (permission !== 'granted') no('没发通知：没有通知权限');
+    else { notify = true; log.push('<span>发了通知</span>'); }
+
+    const snd = alerts.sounds[kind];
+    let sound = 'none';
+    if (paused) no('没响：提醒已暂停');
+    else if (toolOff) no('没响：' + t.toolName + ' 的「' + name + '」提醒已关');
+    else if (snd === 'none') no('没响：' + name + '的提示音选了「不要声音」');
+    else if (alerts.volume === 0) no('没响：音量是 0');
+    else { sound = snd; log.push('<span>响了「' + esc(soundName(snd)) + '」</span>'); }
+
+    if (notify || sound !== 'none') {
+      send({
+        kind: 'testAlert', sound, volume: alerts.volume, notify,
+        title: alerts.notify.title ? t.title : t.plain, body: alerts.notify.title ? t.body : '打开 Fire Ring 查看',
+      });
+    }
+    $('notchLog').innerHTML = log.join('');
+    $('alertLog').innerHTML = log.join('');
+  }
+  document.addEventListener('click', (e) => { const b = e.target.closest('[data-try]'); if (b) runTry(b.dataset.try); });
+
+  // ── 暂停 ──
+  const hhmm = (t) => new Date(t).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+  let pauseDrawn = '';
+  function renderPause() {
+    const paused = alerts.pausedUntil > Date.now();
+    const key = paused ? String(alerts.pausedUntil) : 'off';
+    if (key === pauseDrawn) return;
+    pauseDrawn = key;
+    const tomorrow = new Date(alerts.pausedUntil).getDate() !== new Date().getDate();
+    $('pauseSub').textContent = paused ? '已暂停，' + (tomorrow ? '明天 ' : '') + hhmm(alerts.pausedUntil) + ' 恢复' : '暂停期间不响也不发通知，刘海照常显示';
+    $('pauseSub').style.color = paused ? 'var(--ember)' : '';
+    $('pauseBtns').innerHTML = paused
+      ? '<button class="btn small" data-pause="resume">现在恢复</button>'
+      : '<button class="btn small" data-pause="60">1 小时</button><button class="btn small" data-pause="tomorrow">到明天早上</button>';
+  }
+  $('pauseBtns').addEventListener('click', (e) => {
+    const v = e.target.closest('[data-pause]')?.dataset.pause;
+    if (!v || !alerts) return;
+    let until = 0;
+    if (v === 'tomorrow') { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); until = d.getTime(); }
+    else if (v !== 'resume') until = Date.now() + Number(v) * 60000;
+    alerts.pausedUntil = until;
+    renderPause();
+    saveAlerts({ pausedUntil: until });
+  });
+
+  // ── 按工具 ──
+  let toolsDrawn = '';
+  function renderPerTool() {
+    const key = JSON.stringify([alerts.tools, info.tools.map((t) => t.connected)]);
+    if (key !== toolsDrawn) {
+      toolsDrawn = key;
+      $('perTool').innerHTML = info.tools.map((t) => {
+        const [cls, letter] = GLYPH[t.id] || ['codex', '?'];
+        const p = alerts.tools[t.id] || { wait: true, done: true };
+        const chip = (k, label) => '<button class="chip ' + k + '" data-tool="' + t.id + '" data-state="' + k + '" aria-pressed="' + (t.connected && p[k]) + '"' +
+          (t.connected ? '' : ' disabled') + '><i></i>' + label + '</button>';
+        return '<div class="row"' + (t.connected ? '' : ' style="opacity:.45"') + '><div class="glyph ' + cls + '">' + letter + '</div><div class="text"><div class="title">' + esc(t.name) +
+          '</div><div class="sub">' + (t.connected ? '响铃和通知' : '先在「连接」里连接') + '</div></div><div class="chips">' + chip('wait', '等你') + chip('done', '完成') + '</div></div>';
+      }).join('');
+    }
+    const connected = (id) => Boolean(info.tools.find((t) => t.id === id)?.connected);
+    $('quotaCodexRow').classList.toggle('dim', !connected('codex'));
+    $('quotaDsRow').classList.toggle('dim', !connected('dsh') || !(info.deepseek && info.deepseek.hasKey));
+  }
+  $('perTool').addEventListener('click', (e) => {
+    const c = e.target.closest('.chip');
+    if (!c || c.disabled || !alerts) return;
+    const next = c.getAttribute('aria-pressed') !== 'true';
+    c.setAttribute('aria-pressed', String(next));
+    alerts.tools[c.dataset.tool][c.dataset.state] = next;
+    saveAlerts({ tools: { [c.dataset.tool]: { [c.dataset.state]: next } } });
+  });
+  function saveDsLow() {
+    const amount = Number($('dsLow').value);
+    if (!Number.isFinite(amount) || amount < 0) { $('dsLow').value = alerts.dsLow.amount; return; }
+    saveAlerts({ dsLow: { amount } });
+  }
+  $('dsLow').addEventListener('input', () => { $('dsLow').value = $('dsLow').value.replace(/[^\d.]/g, ''); });
+  $('dsLow').addEventListener('change', saveDsLow);
+  $('dsLow').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('dsLow').blur(); });
+
+  function renderAlerts() {
+    if (!alerts || !info) return;
+    renderSounds();
+    if (document.activeElement !== $('volume')) { $('volume').value = alerts.volume; $('volText').textContent = alerts.volume + '%'; }
+    if (document.activeElement !== $('dsLow')) $('dsLow').value = alerts.dsLow.amount;
+    renderPause();
+    renderPerTool();
+  }
+  function renderNotchAndAlerts() {
+    if (!notch || !alerts) return;
+    renderSwitches();
+    renderAlerts();
+    layoutSegs();
+  }
+
+  // ── 帮助 / 重置 ────────────────────────────────────────
+  $('replayWelcome').addEventListener('click', () => send({ kind: 'replayWelcome' }));
+  $('feedback').addEventListener('click', () => {
+    const repo = (info && info.update && info.update.repo) || 'SAWYER-F325/Fire-Ring';
+    send({ kind: 'openURL', url: 'https://github.com/' + repo + '/issues/new' });
+  });
+  // 诊断信息：后台整理好（已去掉 Key、令牌和对话内容），App 存进「下载」
+  $('exportDiag').addEventListener('click', async () => {
+    $('exportDiag').disabled = true;
+    try {
+      const r = await api('/diagnostics');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const text = await r.text();
+      const extra = '\n## 本机\nApp 位置：' + (native.appPath || '—') + '\n系统：' + (native.macOS || '—') + '\n通知权限：' + permission + '\n';
+      send({ kind: 'saveDiagnostics', text: text + extra });
+    } catch (error) {
+      $('diagSub').textContent = '没能导出：' + error.message;
+      $('exportDiag').disabled = false;
+    }
+  });
+  function onDiagnostics(msg) {
+    $('exportDiag').disabled = false;
+    if (msg.diagError) { $('diagSub').textContent = '没能保存：' + msg.diagError; return; }
+    $('diagSub').innerHTML = '已存到「下载」：' + esc(msg.diagName) + ' <a id="revealDiag">在访达中显示</a>';
+    $('diagSub').dataset.path = msg.diagPath;
+  }
+  document.addEventListener('click', (e) => { if (e.target.id === 'revealDiag') send({ kind: 'revealFile', path: $('diagSub').dataset.path }); });
+
+  const RESET_SUB = '外观、刘海、提醒和菜单栏额度恢复默认。已连接的工具、网络线路和 DeepSeek Key 不变';
+  $('resetBtns').addEventListener('click', async (e) => {
+    const step = e.target.closest('[data-reset]')?.dataset.reset;
+    if (!step) return;
+    if (step === 'ask') {
+      $('resetSub').textContent = '确定要恢复默认吗？这一步不能撤销';
+      $('resetSub').style.color = 'var(--waiting)';
+      $('resetBtns').innerHTML = '<button class="btn small" data-reset="cancel">取消</button><button class="btn small danger solid" data-reset="go">确定重置</button>';
+      return;
+    }
+    if (step === 'go') {
+      try {
+        const r = await post('/reset');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        applyTheme('dark');
+        send({ kind: 'theme', value: 'dark' });
+        $('resetSub').textContent = '已恢复默认设置';
+        $('resetSub').style.color = 'var(--copper)';
+        soundsDrawn = ''; pauseDrawn = ''; toolsDrawn = '';
+        refresh();
+      } catch (error) {
+        $('resetSub').textContent = '没能重置：' + error.message;
+        $('resetSub').style.color = 'var(--waiting)';
+      }
+      $('resetBtns').innerHTML = '<button class="btn small danger" data-reset="ask">重置</button>';
+      setTimeout(() => { $('resetSub').textContent = RESET_SUB; $('resetSub').style.color = ''; }, 4000);
+      return;
+    }
+    $('resetSub').textContent = RESET_SUB;
+    $('resetSub').style.color = '';
+    $('resetBtns').innerHTML = '<button class="btn small danger" data-reset="ask">重置</button>';
+  });
+
+  // ── data ───────────────────────────────────────────────
+  let timer = null;
+  let offline = false;
+  async function refresh() {
+    clearTimeout(timer);
+    try {
+      info = await (await api('/app')).json();
+      offline = false;
+      if (info.config.theme && info.config.theme !== theme) applyTheme(info.config.theme);
+      notch = info.notch;
+      alerts = info.config.alerts;
+      renderConnect();
+      renderNotchAndAlerts();
+      renderQuotaSwitches();
+      renderNetwork(false);
+      renderUpdate();
+      renderAbout();
+    } catch {
+      if (!offline) {
+        offline = true;
+        $('tools').innerHTML = '<div class="row"><div class="text"><div class="title">后台还没启动</div><div class="sub">稍等几秒，Fire Ring 正在启动后台服务</div></div></div>';
+      }
+    }
+    const fast = info && info.update && ['checking', 'downloading'].includes(info.update.phase);
+    timer = setTimeout(refresh, fast ? 600 : 2500);
+  }
+
+  show('connect');
+  refresh();
+  send({ kind: 'notifyStatus' });
+  if (document.fonts) document.fonts.ready.then(() => layoutSegs());
+</script>
+</body>
+</html>

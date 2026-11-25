@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "运行中的会话",
+    "description": "在输入框上方显示正在运行或等待你的 DeepSeek Harness 会话。"
+  }
+}

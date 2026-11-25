@@ -1,0 +1,771 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  /* Fire Design · 曜石刘海 */
+  @font-face {
+    font-family: Urbanist;
+    src: url(fonts/Urbanist-Variable.woff2) format('woff2');
+    font-weight: 100 900;
+  }
+  :root {
+    --fire-waiting: #ff5a36;
+    --fire-copper: #5fe3a1;
+    --fire-copper-edge: #50bf87;
+    --fire-running: #7ea6ff;
+    --ink: #eef1f6;
+    --ink-2: #a8b0bd;
+    --ease-liquid: cubic-bezier(.2,.8,.2,1);
+    --ease-close: cubic-bezier(.32,.72,0,1);
+    --ease-spring-soft: linear(0, 0.058, 0.194, 0.361, 0.529, 0.679, 0.802, 0.897, 0.964, 1.007, 1.032, 1.044, 1.046, 1.042, 1.035, 1.028, 1.02, 1.013, 1.008, 1);
+    --glow: rgba(255,106,43,.22);
+    --open-w: 460px;
+  }
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  body {
+    font-family: Urbanist, "PingFang SC", -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased; -webkit-user-select: none; user-select: none;
+    width: 100vw; height: 100vh; position: relative; color: var(--ink);
+  }
+
+  .island {
+    position: absolute; top: 0; left: 0; right: 0; margin: 0 auto;
+    height: var(--bar); background: #000; overflow: hidden; isolation: isolate;
+    border-radius: 0 0 14px 14px;
+    transition: width 340ms var(--ease-close), height 340ms var(--ease-close), border-radius 340ms var(--ease-close);
+  }
+  .island.open {
+    border-radius: 0 0 24px 24px;
+    transition: width 420ms var(--ease-spring-soft), height 420ms var(--ease-spring-soft), border-radius 420ms var(--ease-spring-soft);
+  }
+
+  .glow {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 130px; z-index: -1; pointer-events: none;
+    background: radial-gradient(90% 100% at 50% 100%, var(--glow), transparent 72%);
+    opacity: 0; transition: opacity 280ms var(--ease-liquid);
+  }
+  .island.open .glow { opacity: 1; }
+
+  .burn {
+    position: absolute; left: 6%; right: 6%; bottom: 0; height: 2px; border-radius: 2px;
+    background: linear-gradient(90deg, transparent, var(--fire-copper-edge) 18%, var(--fire-copper) 50%, var(--fire-copper-edge) 82%, transparent);
+    box-shadow: 0 0 14px rgba(95,227,161,.85);
+    transform-origin: 50% 50%;
+    animation: burn 1300ms var(--ease-liquid) both;
+  }
+  @keyframes burn {
+    0%   { opacity: 1; transform: scaleX(.08); }
+    45%  { opacity: 1; transform: scaleX(1); }
+    100% { opacity: 0; transform: scaleX(1); }
+  }
+
+  .bar {
+    display: grid; grid-template-columns: minmax(0, 1fr) var(--notch) minmax(0, 1fr);
+    align-items: center; height: var(--bar);
+  }
+  .wing { display: flex; }
+  .wing.left { justify-content: flex-end; padding-right: 14px; }
+  .wing.right { padding-left: 14px; }
+  .chips {
+    display: inline-flex; gap: 10px; white-space: nowrap;
+    font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums;
+  }
+  .chip { display: inline-flex; align-items: center; gap: 4px; }
+  .waiting { color: var(--fire-waiting); }
+  .finished { color: var(--fire-copper); }
+  .running { color: var(--fire-running); }
+  svg { display: block; flex: 0 0 auto; }
+
+  /* Only running flames move, and only with this one rhythm. */
+  .flicker {
+    animation: flicker 1500ms cubic-bezier(.45,0,.55,1) infinite;
+    transform-origin: 50% 85%;
+  }
+  @keyframes flicker {
+    0%, 100% { transform: scale(1, 1) skewX(0); }
+    30% { transform: scale(.94, 1.1) skewX(-4deg); }
+    65% { transform: scale(1.03, .95) skewX(3deg); }
+  }
+
+  .card {
+    position: relative; left: 50%; width: var(--open-w); margin-left: calc(var(--open-w) / -2);
+    box-sizing: border-box; opacity: 0; transform: translateY(-6px);
+    transition: opacity 240ms var(--ease-liquid), transform 300ms var(--ease-liquid);
+    contain: layout paint;
+  }
+  .card.in { opacity: 1; transform: none; }
+  .card.peek { padding: 4px 10px 10px; }
+  .card.list { padding: 2px 8px 8px; }
+  .cardInner { max-height: calc(420px - var(--bar) - 10px); overflow-y: auto; }
+  .cardInner::-webkit-scrollbar { display: none; }
+
+  .peekRow { display: flex; align-items: center; gap: 10px; height: 60px; padding: 0 8px; }
+  .text { flex: 1; min-width: 0; }
+  .title, .meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .title { font-size: 13px; line-height: 18px; }
+  .peekRow .title { font-weight: 500; }
+  .meta { font-size: 11px; line-height: 16px; color: var(--ink-2); display: flex; align-items: center; gap: 5px; }
+  .metaText { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .logo { flex: 0 0 auto; width: 14px; height: 14px; display: block; border-radius: 3.5px; box-shadow: 0 0 0 .5px rgba(255,255,255,.22); }
+  .act {
+    flex: 0 0 auto; height: 32px; padding: 0 14px; border: 0; border-radius: 999px; cursor: pointer;
+    font: inherit; font-size: 13px; font-weight: 500; color: #000;
+    transition: transform 160ms var(--ease-liquid), filter 260ms var(--ease-liquid);
+  }
+  .act.waiting { background: linear-gradient(180deg, #ff7a4d, #f2452a); }
+  .act.finished { background: linear-gradient(180deg, var(--fire-copper), var(--fire-copper-edge)); }
+  .act.hot { filter: brightness(1.1); }
+  .act:active { transform: scale(.95); }
+
+  .more {
+    height: 28px; line-height: 28px; text-align: center; border-radius: 14px; cursor: pointer;
+    font-size: 11px; color: var(--ink-2); transition: background-color 420ms var(--ease-liquid);
+  }
+
+  .brandRow { display: flex; align-items: center; gap: 5px; height: 22px; padding: 0 10px; }
+  .brandRow span { font-size: 11px; font-weight: 600; letter-spacing: .02em; background: linear-gradient(90deg, #ffd84a, #ff8a2b 45%, #f2452a); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .groupLabel { position: relative; height: 24px; padding: 0 10px; font-size: 11px; color: var(--ink-2); }
+  .groupLabel > .burnable { height: 100%; display: flex; align-items: center; justify-content: space-between; }
+  .clearAll {
+    height: 20px; padding: 0 8px; margin-right: -6px; border: 0; border-radius: 999px; cursor: pointer;
+    font: inherit; font-size: 11px; color: var(--ink-2); background: transparent;
+    transition: background-color 420ms var(--ease-liquid), color 420ms var(--ease-liquid);
+  }
+  .clearAll.hot { background: rgba(255,138,61,.16); color: var(--ink); transition-duration: 240ms; }
+  .clearAll:active { transform: scale(.96); }
+  .clearAll.spent { opacity: .35; pointer-events: none; transition: opacity 200ms var(--ease-liquid); }
+  .line { position: relative; }
+  .row {
+    display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 10px; border-radius: 14px;
+    cursor: pointer; transition: background-color 420ms var(--ease-liquid);
+  }
+  /* Lights up over a beat and fades slower than it arrives. */
+  .line.hot .row, .more.hot { background: rgba(255,138,61,.14); transition-duration: 240ms; }
+  .row:active, .more:active { background: rgba(255,138,61,.22); transition-duration: 90ms; }
+  .time { flex: 0 0 auto; font-size: 11px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .line.clearable .time, .line.dismissable .time { padding-right: 28px; }
+  .clear {
+    position: absolute; right: 8px; top: 12px; width: 24px; height: 24px; border: 0; padding: 0;
+    border-radius: 50%; background: transparent; color: var(--ink-2); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity 260ms var(--ease-liquid), background-color 200ms var(--ease-liquid);
+  }
+  .line.hot .clear { opacity: 1; }
+  .line.burning .clear { opacity: 0; transition-duration: 120ms; }
+  .clear.hot { background: rgba(255,255,255,.12); }
+
+  /* Clearing a completion: an ember edge burns across it, sparks lift off,
+     then the row folds away. */
+  .burning > .burnable {
+    animation: burn-away 560ms cubic-bezier(.45,0,.35,1) var(--delay, 0ms) forwards;
+  }
+  .burning::after {
+    content: ''; position: absolute; top: 8px; bottom: 8px; left: 0; width: 3px; border-radius: 2px;
+    background: linear-gradient(180deg, #ffe07a, #ff8a2b 55%, #e8261c);
+    box-shadow: 0 0 10px 3px rgba(255,122,43,.85), 0 0 22px 6px rgba(232,38,28,.35);
+    opacity: 0; pointer-events: none;
+    animation: burn-edge 560ms cubic-bezier(.45,0,.35,1) var(--delay, 0ms) forwards;
+  }
+  @keyframes burn-away {
+    0%   { clip-path: inset(0 0 0 0); filter: none; }
+    20%  { filter: sepia(.7) saturate(2.6) hue-rotate(-18deg) brightness(1.15); }
+    100% { clip-path: inset(0 0 0 100%); filter: sepia(1) saturate(3) hue-rotate(-28deg) brightness(.9); }
+  }
+  @keyframes burn-edge {
+    0%   { opacity: 0; transform: translateX(0); }
+    8%   { opacity: 1; }
+    88%  { opacity: 1; }
+    100% { opacity: 0; transform: translateX(var(--w, 300px)); }
+  }
+  .spark {
+    position: absolute; width: 3px; height: 3px; border-radius: 50%; pointer-events: none; opacity: 0;
+    background: #ffc04d; box-shadow: 0 0 6px 1px rgba(255,122,43,.9);
+    animation: spark-rise 720ms cubic-bezier(.2,.8,.2,1) forwards;
+  }
+  @keyframes spark-rise {
+    0%   { opacity: 1; transform: translate(0, 0) scale(1); }
+    100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(.3); }
+  }
+  .collapsing { overflow: hidden; height: 0 !important; transition: height 260ms cubic-bezier(.32,.72,0,1); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .flicker, .burn { animation: none; }
+    .burn { opacity: 0; }
+    .card, .island, .island.open { transition-duration: .01ms; }
+  }
+</style>
+</head>
+<body>
+<div class="island" id="island">
+  <div class="glow"></div>
+  <div class="bar">
+    <div class="wing left"><span class="chips" id="left"></span></div>
+    <div></div>
+    <div class="wing right"><span class="chips" id="right"></span></div>
+  </div>
+  <div id="cardHost"></div>
+</div>
+
+<script>
+  const ENDPOINT = 'http://127.0.0.1:47821';
+  const CLOSE_MS = 340;
+  const PEEK_LEAVE_MS = 2000;
+  const RETRY_MS = 1500;
+  const LISTEN_TIMEOUT_MS = 35000;  // the bridge answers within 25 s even when nothing changed
+  const CLOCK_MS = 30000;
+  const BURN_MS = 1400;
+  const PEEK_WIDTH = 440;
+  const LIST_WIDTH = 460;
+  const MAX_HEIGHT = 420;
+  const MINUTE = 60000;
+  const GLOW = {
+    list: 'rgba(255,106,43,.22)',
+    waiting: 'rgba(255,74,38,.42)',
+    finished: 'rgba(95,227,161,.34)',
+  };
+  const FLAME = 'M12 2c1 3.6 6.5 6.2 6.5 12.2a6.5 6.5 0 0 1-13 0c0-2.600 1.300-4.600 2.900-5.900.3 1.700 1.100 2.800 2.300 3.300C10.500 8.300 10.700 5 12 2z';
+
+  const root = document.documentElement;
+  let BAR = 32;
+  let NOTCH = 160;
+  function applyGeometry(g) {
+    BAR = Math.round(g.barHeight || 32);
+    NOTCH = Math.round(g.notchWidth || 160);
+    root.style.setProperty('--bar', BAR + 'px');
+    root.style.setProperty('--notch', NOTCH + 'px');
+  }
+  applyGeometry(window.__NOTCH__ || {});
+
+  const island = document.getElementById('island');
+  const left = document.getElementById('left');
+  const right = document.getElementById('right');
+  const cardHost = document.getElementById('cardHost');
+
+  let sessions = [];
+  let showList = false;
+  const orderIndex = new Map();
+  let nextOrder = 0;
+  let islandEnabled = true;
+  let autoPeek = true;
+  let peekWait = true;           // 等你时也自动弹出
+  let fullMode = 'hide';         // 全屏 App 里：hide 收起 / waiting 只在等你时显示 / show 照常
+  let fullscreen = false;        // App 告诉这里：刘海所在的屏幕上是不是全屏 App
+  let shownNow = true;
+  let alertSeq = null;           // 已经转交给 App 的提醒
+  let demoSeq = null;            // 设置里「试一下」的演示
+  let demoItem = null;
+  let peekMs = 6000;
+  let revision = -1;
+  let lastSync = Date.now();
+  let pending = null;       // the request being held open
+  let resyncing = false;
+  const reported = new Set();
+  let lastSignature = null;
+  let lastLeftHtml = null;
+  let lastRightHtml = null;
+  let lastFrameKey = '';
+  let collapseTimer = null;
+  let burnTimer = null;
+  let peekIds = null;
+  let peekTimer = null;
+  let hovering = false;
+  let hotEl = null;
+  let arrivalsReady = false;
+  let lastFinishedAt = 0;
+  let knownWaiting = new Set();
+
+  const api = (path, options = {}) => fetch(ENDPOINT + path, {
+    cache: 'no-store', ...options, headers: { 'X-Bridge-Token': window.__BRIDGE_TOKEN__ || '' },
+  });
+  const log = (m) => { api('/log?m=' + encodeURIComponent('[island] ' + m), { method: 'POST' }).catch(() => {}); };
+  const send = (p) => { if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.ui) window.webkit.messageHandlers.ui.postMessage(p); };
+  const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const byId = (id) => sessions.find((s) => s.id === id);
+  const label = (s) => s.title || s.project || s.id.slice(0, 8);
+  const providerName = (s) => s.providerName || ({ codex: 'Codex', claude: 'Claude', dsh: 'DeepSeek' }[s.provider] || '');
+  // 第二行开头的小 logo：一眼认出是哪个软件。图标来自各家的 App 或官网，只用来标明来源。
+  // app/logos 里还放着 Cursor、Kimi、Grok 的，接入这些工具时再加进来。
+  const LOGOS = new Set(['claude', 'codex', 'dsh']);
+  const logo = (s) => (LOGOS.has(s.provider) ? '<img class="logo" src="logos/' + s.provider + '.png" alt="" aria-hidden="true">' : '');
+  const projectName = (s) => (s.project || '').split('/').filter(Boolean).pop() || '';
+  const meta = (s) => [providerName(s), projectName(s)].filter(Boolean).join(' · ');
+  const metaHtml = (s) => logo(s) + '<span class="metaText">' + esc(meta(s)) + '</span>';
+  const ofStatus = (status) => sessions.filter((s) => s.status === status)
+    .sort((a, b) => (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0));
+
+  function icon(status, size, flicker) {
+    const shape = 'width="' + size + '" height="' + size + '" viewBox="0 0 24 24" aria-hidden="true"';
+    if (status === 'waiting') return '<svg ' + shape + ' fill="currentColor"><path d="' + FLAME + '"/></svg>';
+    if (status === 'finished') return '<svg ' + shape + ' fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.500 4.500L19 7.500"/></svg>';
+    return '<svg ' + (flicker ? 'class="flicker" ' : '') + shape + ' fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="' + FLAME + '"/></svg>';
+  }
+  const chip = (status, count) => '<span class="chip ' + status + '">' + icon(status, status === 'finished' ? 13 : 14, status === 'running') + count + '</span>';
+  // 全屏 App 里选了「只在等你时显示」：只留等你的任务
+  const onlyWaiting = () => fullscreen && fullMode === 'waiting';
+
+  function timeText(s) {
+    if (s.status === 'running' && s.backgroundOnly) return '后台运行';
+    const since = s.status === 'finished' ? s.finishedAt : s.status === 'waiting' ? s.updatedAt : s.lastPromptAt;
+    if (!since) return '';
+    const minutes = Math.max(0, Math.round((Date.now() - since) / MINUTE));
+    if (s.status === 'waiting') return minutes ? '等了 ' + minutes + ' 分钟' : '刚刚';
+    if (s.status === 'finished') return minutes ? minutes + ' 分钟前' : '刚刚';
+    return minutes ? minutes + ' 分钟' : '刚开始';
+  }
+
+  function clearPeek() {
+    clearTimeout(peekTimer);
+    peekIds = null;
+    demoItem = null;
+    lastSignature = null;
+  }
+
+  function armPeek(ms) {
+    clearTimeout(peekTimer);
+    peekTimer = setTimeout(() => {
+      if (hovering) return;
+      clearPeek();
+      showList = false;
+      render();
+    }, ms);
+  }
+
+  function burn() {
+    island.querySelector('.burn')?.remove();
+    const line = document.createElement('div');
+    line.className = 'burn';
+    island.appendChild(line);
+    clearTimeout(burnTimer);
+    burnTimer = setTimeout(() => line.remove(), BURN_MS);
+  }
+
+  // A turn that just ended, or a session that just started waiting, opens the
+  // island by itself for a few seconds. The first read is only a baseline, so
+  // restarting never replays old completions.
+  function checkArrivals() {
+    const finished = sessions.filter((s) => s.status === 'finished' && s.finishedAt);
+    const waiting = sessions.filter((s) => s.status === 'waiting');
+    const justFinished = arrivalsReady ? finished.filter((s) => s.finishedAt > lastFinishedAt) : [];
+    const justWaiting = arrivalsReady ? waiting.filter((s) => !knownWaiting.has(s.id)) : [];
+    arrivalsReady = true;
+    lastFinishedAt = Math.max(lastFinishedAt, ...finished.map((s) => s.finishedAt));
+    knownWaiting = new Set(waiting.map((s) => s.id));
+
+    if (justFinished.length && !onlyWaiting()) burn();
+    const arrived = [...(autoPeek && !onlyWaiting() ? justFinished : []), ...(peekWait ? justWaiting : [])];
+    if (!arrived.length || (showList && !peekIds)) return;
+
+    peekIds = new Set([...(peekIds || []), ...arrived.map((s) => s.id)]);
+    showList = true;
+    lastSignature = null;
+    armPeek(peekMs);
+  }
+
+  // The window never changes size: resizing a WKWebView mid-animation is what
+  // stutters and flashes. Only this shape moves, and the app is told where it
+  // ends up so it can pass clicks through everywhere else.
+  function layout(mode) {
+    const cardEl = cardHost.querySelector('.card');
+    const open = Boolean(mode && cardEl);
+    const widest = Math.max(left.offsetWidth, right.offsetWidth);
+    const barWidth = NOTCH + 2 * (widest ? widest + 26 : 8);
+    const width = open ? (mode === 'peek' ? PEEK_WIDTH : LIST_WIDTH) : barWidth;
+    const height = open ? Math.min(MAX_HEIGHT, BAR + cardEl.offsetHeight) : BAR;
+
+    const key = width + ',' + height + ',' + open;
+    if (key === lastFrameKey) return;
+    lastFrameKey = key;
+
+    send({ kind: 'shape', width, height });
+    island.classList.toggle('open', open);
+    island.style.width = width + 'px';
+    island.style.height = height + 'px';
+    if (!open) {
+      setTimeout(() => {
+        if (showList) return;
+        cardHost.innerHTML = '';
+        lastSignature = null;
+      }, CLOSE_MS);
+    }
+  }
+
+  function peekHtml(rows, moreCount) {
+    return rows.map((s) =>
+      '<div class="peekRow" data-id="' + esc(s.id) + '">' +
+        '<span class="' + s.status + '">' + icon(s.status, s.status === 'finished' ? 17 : 18, false) + '</span>' +
+        '<div class="text"><div class="title">' + esc(label(s)) + '</div><div class="meta">' + metaHtml(s) + '</div></div>' +
+        '<button class="act ' + s.status + '" data-act="open">' + (s.status === 'waiting' ? '去确认' : '回到对话') + '</button>' +
+      '</div>').join('') +
+      (moreCount ? '<div class="more" data-act="more">查看全部 ' + moreCount + ' 项</div>' : '');
+  }
+
+  const BRAND = '<div class="brandRow" aria-label="Fire Ring"><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path fill="#e0231c" d="M12 1C13.2 5.5 20 9 20 15.5C20 20 16.4 23 12 23C7.6 23 4 20 4 15.5C4 12.5 5.6 10 7.5 8.5C7.9 10.3 8.7 11.3 9.9 11.8C9.5 7.8 10.4 4 12 1Z"/><path fill="#ff7a2b" d="M12.5 8C13.3 11 17 13 17 17C17 20.2 14.8 22.3 12 22.3C9.2 22.3 7 20.2 7 17.2C7 15.4 7.9 14 9 13C9.3 14.2 9.8 14.9 10.7 15.3C10.5 12.6 11.2 10 12.5 8Z"/><path fill="#ffd84a" d="M12.3 14.5C12.8 16.2 14.7 17.2 14.7 19.2C14.7 20.8 13.5 21.8 12 21.8C10.5 21.8 9.3 20.8 9.3 19.3C9.3 17.7 11.6 16.5 12.3 14.5Z"/></svg><span>Fire Ring</span></div>';
+
+  function listHtml(groups) {
+    return BRAND + groups.map(([name, rows]) =>
+      '<div class="groupLabel"><div class="burnable"><span>' + name + '</span>' +
+        (name === '完成' ? '<button class="clearAll" data-act="clearAll">全部清除</button>' : '') +
+      '</div></div>' + rows.map((s) =>
+        '<div class="line' + (s.status === 'finished' ? ' clearable' : '') + (s.status === 'waiting' ? ' dismissable' : '') + '" data-id="' + esc(s.id) + '">' +
+          '<div class="row burnable" data-act="open">' +
+            '<span class="' + s.status + '">' + icon(s.status, s.status === 'finished' ? 15 : 16, s.status === 'running') + '</span>' +
+            '<div class="text"><div class="title">' + esc(label(s)) + '</div><div class="meta">' + metaHtml(s) + '</div></div>' +
+            '<span class="time">' + esc(timeText(s)) + '</span>' +
+          '</div>' +
+          (s.status === 'finished' || s.status === 'waiting'
+            ? '<button class="clear" data-act="clear" aria-label="' + (s.status === 'waiting' ? '清除这条等你' : '清除这条完成') + '"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>'
+            : '') +
+        '</div>').join('')).join('');
+  }
+
+  function render() {
+    for (const s of sessions) if (!orderIndex.has(s.id)) orderIndex.set(s.id, nextOrder++);
+    const waiting = ofStatus('waiting');
+    const finished = onlyWaiting() ? [] : ofStatus('finished');
+    const running = onlyWaiting() ? [] : ofStatus('running');
+
+    const leftHtml = (waiting.length ? chip('waiting', waiting.length) : '') + (finished.length ? chip('finished', finished.length) : '');
+    if (leftHtml !== lastLeftHtml) { lastLeftHtml = leftHtml; left.innerHTML = leftHtml; }
+    const rightHtml = running.length ? chip('running', running.length) : '';
+    if (rightHtml !== lastRightHtml) { lastRightHtml = rightHtml; right.innerHTML = rightHtml; }
+
+    const peekRows = peekIds ? [...waiting, ...finished, ...(demoItem ? [demoItem] : [])].filter((s) => peekIds.has(s.id)) : [];
+    if (peekIds && !peekRows.length) { clearPeek(); showList = false; }
+
+    // While rows burn, the notch neither redraws nor closes; it does both once
+    // the fire is out (each burn ends with a render).
+    if (burning) return;
+
+    const total = waiting.length + finished.length + running.length + (demoItem ? 1 : 0);
+    const mode = !showList || !total ? null : peekIds ? 'peek' : 'list';
+    if (!mode) {
+      cardHost.querySelector('.card')?.classList.remove('in');
+      layout(null);
+      return;
+    }
+    const moreCount = mode === 'peek' && !demoItem && total > peekRows.length ? total : 0;
+    const groups = [['等你', waiting], ['完成', finished], ['在跑', running]].filter(([, rows]) => rows.length);
+    const signature = mode === 'peek'
+      ? 'peek|' + moreCount + '|' + peekRows.map((s) => s.id + ':' + s.status + ':' + label(s)).join('|')
+      : 'list|' + groups.flatMap(([, rows]) => rows).map((s) => s.id + ':' + s.status + ':' + label(s) + ':' + timeText(s)).join('|');
+
+    const width = mode === 'peek' ? PEEK_WIDTH : LIST_WIDTH;
+    root.style.setProperty('--open-w', width + 'px');
+    root.style.setProperty('--glow', mode === 'list' ? GLOW.list : peekRows.some((s) => s.status === 'waiting') ? GLOW.waiting : GLOW.finished);
+
+    let cardEl = cardHost.querySelector('.card');
+    if (!cardEl || cardEl.dataset.mode !== mode) {
+      cardHost.innerHTML = '<div class="card ' + mode + '" data-mode="' + mode + '"><div class="cardInner"></div></div>';
+      cardEl = cardHost.querySelector('.card');
+      lastSignature = null;
+    }
+    if (signature !== lastSignature) {
+      lastSignature = signature;
+      hotEl = null;
+      cardEl.querySelector('.cardInner').innerHTML = mode === 'peek' ? peekHtml(peekRows, moreCount) : listHtml(groups);
+    }
+
+    layout(mode);
+    requestAnimationFrame(() => cardEl.classList.add('in'));
+  }
+
+  function openTarget(session) {
+    const kind = session.open && session.open.kind;
+    const others = peekIds ? [...peekIds].filter((id) => id !== session.id && byId(id)) : [];
+    if (others.length) {
+      peekIds = new Set(others);
+      lastSignature = null;
+      armPeek(peekMs);
+    } else {
+      showList = false;
+      clearPeek();
+    }
+    if (kind === 'url' && session.open.value) send({ kind: 'openURL', url: session.open.value });
+    else if (kind === 'terminal' && session.open.value) send({ kind: 'terminal', command: session.open.value });
+    else if (kind === 'app' && session.open.value) send({ kind: 'openApp', bundle: session.open.value });
+    else {
+      api('/open?id=' + encodeURIComponent(session.id), { method: 'POST' }).catch(() => {});
+      send({ kind: 'focus' });
+    }
+    render();
+  }
+
+  // Burns rows away one after another, then resolves once they have folded up.
+  const BURN_AWAY_MS = 560;
+  const FOLD_MS = 260;
+  const SPARKS = 7;
+  let burning = 0;
+
+  // fold: false leaves the burnt rows in place, for when the whole notch is
+  // about to close anyway; folding them first would leave an empty card.
+  function burnAway(nodes, stagger = 0, { fold = true } = {}) {
+    if (!nodes.length) return Promise.resolve();
+    burning += 1;
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const each = nodes.map((node, index) => new Promise((resolve) => {
+      const delay = index * stagger;
+      const width = node.offsetWidth;
+      const height = node.offsetHeight;
+      node.style.setProperty('--w', width + 'px');
+      node.style.setProperty('--delay', delay + 'ms');
+      if (!still) {
+        for (let i = 0; i < SPARKS; i++) {
+          const along = (i + Math.random()) / SPARKS;
+          const spark = document.createElement('i');
+          spark.className = 'spark';
+          spark.style.left = Math.round(along * width) + 'px';
+          spark.style.top = Math.round(height * (0.3 + Math.random() * 0.4)) + 'px';
+          spark.style.setProperty('--dx', Math.round(Math.random() * 16 - 8) + 'px');
+          spark.style.setProperty('--dy', -Math.round(12 + Math.random() * 18) + 'px');
+          spark.style.animationDelay = Math.round(delay + along * BURN_AWAY_MS) + 'ms';
+          node.appendChild(spark);
+        }
+        node.classList.add('burning');
+      }
+      setTimeout(() => {
+        if (!fold) { resolve(); return; }
+        node.style.height = height + 'px';
+        void node.offsetHeight;
+        node.classList.add('collapsing');
+        setTimeout(resolve, still ? 0 : FOLD_MS);
+      }, still ? 0 : delay + BURN_AWAY_MS);
+    }));
+    return Promise.all(each).then(() => { burning -= 1; });
+  }
+
+  const finishedLines = () => [...cardHost.querySelectorAll('.line.clearable:not(.burning)')];
+
+  function dismiss(session) {
+    session.status = 'idle';
+    session.finished = false;
+    api('/dismiss?id=' + encodeURIComponent(session.id), { method: 'POST' }).catch(() => {});
+  }
+
+  cardHost.addEventListener('click', (event) => {
+    const target = event.target.closest('[data-act]');
+    if (!target) return;
+    if (target.dataset.act === 'more') {
+      clearPeek();
+      render();
+      return;
+    }
+    if (target.dataset.act === 'clearAll') {
+      if (burning) return;
+      send({ kind: 'burn', scope: 'all' });
+      api('/dismiss-finished', { method: 'POST' }).catch(() => {});
+      for (const s of sessions) if (s.status === 'finished') { s.status = 'idle'; s.finished = false; }
+      target.classList.add('spent');
+      // The whole 完成 group burns, heading first, then each completion in turn.
+      // Nothing else left: the notch closes when the fire is out.
+      const left = sessions.some((s) => s.status === 'waiting' || s.status === 'running');
+      const group = [target.closest('.groupLabel'), ...finishedLines()].filter(Boolean);
+      burnAway(group, 90, { fold: left }).then(render);
+      return;
+    }
+    if (target.closest('[data-id]')?.dataset.id === DEMO_ID) {
+      showList = false;
+      clearPeek();
+      render();
+      return;
+    }
+    const session = byId(target.closest('[data-id]')?.dataset.id);
+    if (!session) return;
+    if (target.dataset.act === 'clear') {
+      send({ kind: 'burn', scope: 'one' });
+      const line = target.closest('.line');
+      dismiss(session);
+      burnAway([line]).then(render);
+      return;
+    }
+    if (session.status === 'finished') dismiss(session);
+    openTarget(session);
+  });
+
+  function setHot(el) {
+    if (el === hotEl) return;
+    hotEl?.classList.remove('hot');
+    hotEl = el;
+    hotEl?.classList.add('hot');
+  }
+
+  // CSS :hover does not fire in a window that is never key, so the app reports
+  // the pointer instead.
+  window.__pointer = (x, y) => {
+    const el = document.elementFromPoint(x, y);
+    setHot(el ? el.closest('.clear, .act, .more, .clearAll') || el.closest('.line') : null);
+    if (hotEl?.classList.contains('clear')) hotEl.closest('.line').classList.add('hot');
+    cardHost.querySelectorAll('.line.hot').forEach((line) => {
+      if (line !== hotEl && line !== hotEl?.closest('.line')) line.classList.remove('hot');
+    });
+  };
+
+  window.__setHover = (inside) => {
+    clearTimeout(collapseTimer);
+    hovering = inside;
+    if (!inside) {
+      setHot(null);
+      cardHost.querySelectorAll('.line.hot').forEach((line) => line.classList.remove('hot'));
+    }
+    if (inside) {
+      // A peek's buttons are the point of it, so pointing at one only holds it
+      // open. The full list comes from the bare bar, or the peek's own link.
+      if (peekIds) { clearTimeout(peekTimer); return; }
+      const anything = sessions.some((s) => s.status !== 'idle' && (!onlyWaiting() || s.status === 'waiting'));
+      if (anything && !showList) { showList = true; render(); }
+      return;
+    }
+    if (peekIds) { armPeek(PEEK_LEAVE_MS); return; }
+    // 离开就收：120ms 缓冲，指针在缓冲期内回来会取消。
+    collapseTimer = setTimeout(() => {
+      // A peek may have arrived during the grace period; it closes on its own.
+      if (showList && !peekIds) { showList = false; lastSignature = null; render(); }
+    }, 120);
+  };
+
+  window.__setGeometry = (g) => {
+    applyGeometry(g);
+    lastFrameKey = '';
+    render();
+  };
+
+  // 刘海藏起来：关掉了刘海提示，或者全屏 App 里按设置收起
+  function updateVisibility() {
+    const hide = !islandEnabled
+      || (fullscreen && (fullMode === 'hide' || (fullMode === 'waiting' && !sessions.some((s) => s.status === 'waiting'))));
+    if (hide === !shownNow) return;
+    shownNow = !hide;
+    if (hide) { showList = false; clearPeek(); }
+    send({ kind: hide ? 'hide' : 'show' });
+  }
+
+  // 提醒（响铃、系统通知）交给 App。第一次只记下序号，不把旧提醒再来一遍。
+  function forwardAlerts(a) {
+    if (!a || typeof a.seq !== 'number') return;
+    if (alertSeq === null || a.seq < alertSeq) { alertSeq = a.seq; return; }   // 刚打开，或后台重启过
+    // 提醒自己的种类（wait / done / remind / quota）放在 type 里，消息种类始终是 alert
+    for (const e of a.events || []) if (e.seq > alertSeq) send({ ...e, type: e.kind, kind: 'alert' });
+    alertSeq = a.seq;
+  }
+
+  // 设置里点「试一下」：弹出一张演示卡片
+  const DEMO_ID = '__demo';
+  const DEMO = {
+    wait: { id: DEMO_ID, status: 'waiting', title: '要不要删除旧的构建目录？', provider: 'codex', providerName: 'Codex', project: '演示' },
+    done: { id: DEMO_ID, status: 'finished', title: '重构设置窗口', provider: 'claude', providerName: 'Claude', project: '演示' },
+  };
+  function showDemo(d) {
+    if (!d || typeof d.seq !== 'number') return;
+    if (demoSeq === null || d.seq < demoSeq) { demoSeq = d.seq; return; }
+    if (d.seq === demoSeq) return;
+    demoSeq = d.seq;
+    if (!shownNow || !DEMO[d.kind]) return;
+    clearPeek();
+    demoItem = DEMO[d.kind];
+    peekIds = new Set([DEMO_ID]);
+    showList = true;
+    lastSignature = null;
+    armPeek(peekMs);
+  }
+
+  // 点了系统通知：打开那个对话
+  window.__openSession = (id) => {
+    const session = byId(String(id));
+    if (!session) return;
+    if (session.status === 'finished') dismiss(session);
+    openTarget(session);
+  };
+
+  window.__setFullscreen = (on) => {
+    fullscreen = Boolean(on);
+    updateVisibility();
+    lastSignature = null;
+    lastLeftHtml = null;
+    lastRightHtml = null;
+    render();
+  };
+
+  function apply(data) {
+    forwardAlerts(data.alerts);
+    const enabled = data.islandEnabled !== false;
+    if (enabled !== islandEnabled) {
+      islandEnabled = enabled;
+      log('island ' + (enabled ? 'shown' : 'hidden'));
+    }
+    peekWait = data.peekWait !== false;
+    fullMode = ['hide', 'waiting', 'show'].includes(data.fullscreen) ? data.fullscreen : 'hide';
+    if (!enabled) { sessions = []; showList = false; clearPeek(); arrivalsReady = false; cardHost.innerHTML = ''; updateVisibility(); return; }
+
+    autoPeek = data.autoPeek !== false;
+    peekMs = (data.peekSeconds || 6) * 1000;
+    const was = new Map(sessions.map((s) => [s.id, s.status]));
+    sessions = Array.isArray(data.sessions) ? data.sessions : [];
+    // Completions cleared elsewhere (opened in their own app, or from the
+    // menu bar) burn away here too rather than vanish.
+    const gone = finishedLines().filter((line) => was.get(line.dataset.id) === 'finished' && (byId(line.dataset.id)?.status ?? 'idle') === 'idle');
+    if (gone.length) burnAway(gone, 80).then(render);
+    updateVisibility();
+    checkArrivals();
+    showDemo(data.demo);
+    render();
+  }
+
+  // Each distinct failure is written to the bridge log once, so a stuck notch
+  // leaves a trace instead of failing silently.
+  function report(where, error) {
+    const text = where + ': ' + (error && error.message ? error.message : String(error));
+    if (reported.has(text)) return;
+    reported.add(text);
+    log(text);
+  }
+
+  // Held open by the bridge until something changes. A request that never
+  // comes back is abandoned, and the revision only advances once the answer
+  // has been drawn, so a failed draw is retried instead of waited out.
+  async function listen() {
+    for (;;) {
+      const controller = new AbortController();
+      pending = controller;
+      const timeout = setTimeout(() => controller.abort(), LISTEN_TIMEOUT_MS);
+      try {
+        const response = await api('/state?rev=' + revision, { signal: controller.signal });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const data = await response.json();
+        lastSync = Date.now();
+        try {
+          apply(data);
+          revision = data.rev;
+        } catch (error) {
+          report('draw failed', error);
+          await new Promise((resolve) => setTimeout(resolve, RETRY_MS));
+        }
+      } catch (error) {
+        if (!resyncing) {
+          if (error.name !== 'AbortError') report('request failed', error);
+          await new Promise((resolve) => setTimeout(resolve, RETRY_MS));
+        }
+      } finally {
+        clearTimeout(timeout);
+        resyncing = false;
+      }
+    }
+  }
+
+  // The app checks this to tell a live page from a stuck one.
+  window.__lastSync = () => Date.now() - lastSync;
+
+  // Called by the app after the Mac wakes: drop whatever was in flight and ask again.
+  window.__resync = () => {
+    revision = -1;
+    resyncing = true;
+    lastSync = Date.now();   // a fresh grace period, so the watchdog does not reload mid-retry
+    pending?.abort();
+  };
+
+  log('started');
+  document.fonts.ready.then(() => { lastFrameKey = ''; render(); });
+  listen();
+  setInterval(render, CLOCK_MS);
+</script>
+</body>
+</html>

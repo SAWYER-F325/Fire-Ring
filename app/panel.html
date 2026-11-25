@@ -1,0 +1,956 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  /* Fire Design · 菜单栏面板。玻璃和弹性由 App 原生提供，这里只放内容。 */
+  @font-face {
+    font-family: Urbanist;
+    src: url(fonts/Urbanist-Variable.woff2) format('woff2');
+    font-weight: 100 900;
+  }
+  /* Colour modes, after Fire Design: dark is the default (the original look);
+     light is Fire Design's light — lavender ground, white raised tiles, an indigo
+     accent. <html data-theme="dark|light|system"> picks one; "system" follows macOS. */
+  :root {
+    color-scheme: dark;
+    --tint: 255,255,255;                 /* hover and pressed overlays */
+    --ink: #eef1f6; --ink-2: rgba(238,241,246,.62); --ink-3: rgba(238,241,246,.40);
+    --line: rgba(255,255,255,.10);
+    --waiting: #ff5a36; --waiting-rgb: 255,90,54;
+    --running: #7ea6ff;
+    --copper: #5fe3a1; --done-rgb: 95,227,161;
+    --accent: #4c8dff; --on-accent: #ffffff;
+    --ember: #ff8a2b; --gold: #ffd84a;
+    --word: linear-gradient(90deg, #ffd84a, #ff8a2b 45%, #f2452a);
+    --wash: transparent;
+    --page: radial-gradient(120% 70% at 0% 0%, rgba(255,122,43,.10), transparent 55%), rgba(14,15,19,.38);
+    --bar-bg: rgba(18,18,22,.72);
+    --field-bg: rgba(0,0,0,.25); --shadow: rgba(0,0,0,.3);
+    --tile: rgba(255,255,255,.05); --tile-hover: rgba(255,255,255,.10); --tile-shadow: 0 0 0 0 transparent;
+    --thumb: linear-gradient(180deg, rgba(255,255,255,.20), rgba(255,255,255,.10));
+    --thumb-shadow: inset 0 1px 0 rgba(255,255,255,.28), inset 0 0 0 .5px rgba(255,255,255,.14);
+    --tray: transparent;
+    --card: rgba(255,255,255,.05); --card-shadow: inset 0 0 0 .5px rgba(255,255,255,.08);
+    --nav-on: linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.08)); --nav-on-ink: #eef1f6;
+    --nav-on-shadow: inset 0 1px 0 rgba(255,255,255,.22);
+    --glyph-claude: #e8a083; --glyph-dsh: #9aaeff;
+    --liquid: cubic-bezier(.2,.8,.2,1);
+    --spring: linear(0, 0.058, 0.194, 0.361, 0.529, 0.679, 0.802, 0.897, 0.964, 1.007, 1.032, 1.044, 1.046, 1.042, 1.035, 1.028, 1.02, 1.013, 1.008, 1);
+    --fire-fill: linear-gradient(90deg, #ffd84a, #ff8a2b);
+    --fire-glow: rgba(255,138,43,.35);
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --tint: 40,45,120;
+    --ink: #14152b; --ink-2: #4d5070; --ink-3: #5a5d80;
+    --line: rgba(40,45,120,.13);
+    --waiting: #b0321f; --waiting-rgb: 176,50,31;
+    --running: #5057d2;
+    --copper: #0c6c4a; --done-rgb: 12,108,74;
+    --accent: #5249e0;
+    --ember: #93590a; --gold: #b87410;
+    --word: linear-gradient(90deg, #c27400, #d4521a 45%, #c4241a);
+    --wash: radial-gradient(110% 70% at 0% 0%, rgba(129,140,248,.20), transparent 60%),
+            radial-gradient(90% 60% at 100% 8%, rgba(192,132,252,.22), transparent 62%),
+            radial-gradient(100% 60% at 70% 100%, rgba(56,189,248,.16), transparent 62%), rgba(238,240,255,.30);
+    --page: radial-gradient(90% 60% at 0% 0%, rgba(129,140,248,.18), transparent 60%),
+            radial-gradient(70% 50% at 100% 0%, rgba(192,132,252,.22), transparent 62%),
+            radial-gradient(80% 50% at 80% 100%, rgba(56,189,248,.14), transparent 62%), rgba(240,242,255,.36);
+    --bar-bg: rgba(248,249,255,.62);
+    --field-bg: rgba(255,255,255,.62); --shadow: rgba(40,45,120,.2);
+    --tile: rgba(255,255,255,.55); --tile-hover: rgba(255,255,255,.74);
+    --tile-shadow: 0 1px 2px rgba(40,45,120,.06), 0 6px 16px rgba(40,45,120,.08);
+    --thumb: #ffffff; --thumb-shadow: inset 0 0 0 1.5px rgba(82,73,224,.65), 0 8px 20px -10px rgba(82,73,224,.7);
+    --tray: rgba(226,229,251,.34);
+    --card: rgba(255,255,255,.46);
+    --card-shadow: 0 1px 2px rgba(40,45,120,.05), 0 8px 24px rgba(40,45,120,.06), inset 0 0 0 .5px rgba(255,255,255,.75), inset 0 0 0 1px rgba(40,45,120,.06);
+    --nav-on: #5249e0; --nav-on-ink: #ffffff; --nav-on-shadow: 0 8px 20px -10px rgba(82,73,224,.8);
+    --glyph-claude: #a94a26; --glyph-dsh: #3346b8;
+  }
+  @media (prefers-color-scheme: light) {
+    :root[data-theme="system"] {
+    color-scheme: light;
+    --tint: 40,45,120;
+    --ink: #14152b; --ink-2: #4d5070; --ink-3: #5a5d80;
+    --line: rgba(40,45,120,.13);
+    --waiting: #b0321f; --waiting-rgb: 176,50,31;
+    --running: #5057d2;
+    --copper: #0c6c4a; --done-rgb: 12,108,74;
+    --accent: #5249e0;
+    --ember: #93590a; --gold: #b87410;
+    --word: linear-gradient(90deg, #c27400, #d4521a 45%, #c4241a);
+    --wash: radial-gradient(110% 70% at 0% 0%, rgba(129,140,248,.20), transparent 60%),
+            radial-gradient(90% 60% at 100% 8%, rgba(192,132,252,.22), transparent 62%),
+            radial-gradient(100% 60% at 70% 100%, rgba(56,189,248,.16), transparent 62%), rgba(238,240,255,.30);
+    --page: radial-gradient(90% 60% at 0% 0%, rgba(129,140,248,.18), transparent 60%),
+            radial-gradient(70% 50% at 100% 0%, rgba(192,132,252,.22), transparent 62%),
+            radial-gradient(80% 50% at 80% 100%, rgba(56,189,248,.14), transparent 62%), rgba(240,242,255,.36);
+    --bar-bg: rgba(248,249,255,.62);
+    --field-bg: rgba(255,255,255,.62); --shadow: rgba(40,45,120,.2);
+    --tile: rgba(255,255,255,.55); --tile-hover: rgba(255,255,255,.74);
+    --tile-shadow: 0 1px 2px rgba(40,45,120,.06), 0 6px 16px rgba(40,45,120,.08);
+    --thumb: #ffffff; --thumb-shadow: inset 0 0 0 1.5px rgba(82,73,224,.65), 0 8px 20px -10px rgba(82,73,224,.7);
+    --tray: rgba(226,229,251,.34);
+    --card: rgba(255,255,255,.46);
+    --card-shadow: 0 1px 2px rgba(40,45,120,.05), 0 8px 24px rgba(40,45,120,.06), inset 0 0 0 .5px rgba(255,255,255,.75), inset 0 0 0 1px rgba(40,45,120,.06);
+    --nav-on: #5249e0; --nav-on-ink: #ffffff; --nav-on-shadow: 0 8px 20px -10px rgba(82,73,224,.8);
+    --glyph-claude: #a94a26; --glyph-dsh: #3346b8;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  html { background: var(--wash); }
+  body {
+    font-family: Urbanist, "PingFang SC", -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased; -webkit-user-select: none; user-select: none;
+    color: var(--ink); font-size: 13px; line-height: 18px;
+  }
+  #root { padding: 14px 16px 10px; }
+  /* Taller than the screen allows: the panel scrolls rather than lose its end. */
+  #root.scrolls { overflow-y: auto; overscroll-behavior: contain; }
+
+  .rise { opacity: 0; transform: translateY(8px); }
+  .shown .rise {
+    opacity: 1; transform: none;
+    transition: opacity 280ms var(--liquid), transform 420ms var(--spring);
+  }
+  .shown .rise:nth-child(2) { transition-delay: 35ms; }
+  .shown .rise:nth-child(3) { transition-delay: 70ms; }
+  .shown .rise:nth-child(4) { transition-delay: 105ms; }
+  .shown .rise:nth-child(5) { transition-delay: 140ms; }
+  .shown .rise:nth-child(6) { transition-delay: 175ms; }
+
+  /* The product's own mark: the three-layer flame and its name. */
+  .brand { display: flex; align-items: center; gap: 7px; height: 26px; margin-bottom: 10px; }
+  .brand svg { display: block; flex: 0 0 auto; filter: drop-shadow(0 0 6px rgba(255,122,43,.45)); }
+  .wordmark { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: .01em; background: var(--word); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .tabs { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px; }
+  .thumb {
+    position: absolute; top: 0; left: 0; height: 100%; border-radius: 14px;
+    background: var(--thumb);
+    box-shadow: var(--thumb-shadow);
+    transition: transform 460ms var(--spring);
+  }
+  .tab {
+    position: relative; display: flex; flex-direction: column; gap: 1px; align-items: flex-start;
+    padding: 7px 10px 8px; border: 0; border-radius: 14px; cursor: pointer; color: inherit; font: inherit;
+    background: var(--tile); box-shadow: var(--tile-shadow); transition: background-color 420ms var(--liquid), transform 160ms var(--liquid);
+  }
+  .tab:hover { background: var(--tile-hover); transition-duration: 240ms; }
+  .tab:active { transform: scale(.97); }
+  .tab.selected, .tab.selected:hover { background: transparent; box-shadow: none; }
+  .tab:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .num { font-size: 24px; line-height: 30px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .statLabel { display: flex; align-items: center; gap: 4px; font-size: 11px; line-height: 16px; }
+  .statLabel svg { display: block; }
+  .waiting { color: var(--waiting); } .finished { color: var(--copper); } .running { color: var(--running); }
+
+  section { border-top: 1px solid var(--line); padding: 10px 0; }
+  section:last-child { padding-bottom: 2px; }
+  section.listWrap { border-top: 0; padding: 0 0 8px; }
+  .head { font-size: 11px; line-height: 16px; color: var(--ink-2); margin-bottom: 6px; }
+
+  /* Grows with its rows. The app moves the glass on the same curve. */
+  #items { background: var(--tray); border-radius: 14px; height: 64px; overflow-y: auto; margin: 0 -8px; padding: 0 8px; transition: height 420ms var(--spring); }
+  #items::-webkit-scrollbar { display: none; }
+  .empty { height: 100%; display: flex; align-items: center; justify-content: center; color: var(--ink-2); font-size: 13px; }
+  .item { position: relative; height: 44px; margin: 0 -8px; }
+  .itemBody {
+    display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 8px;
+    border-radius: 12px; cursor: pointer; transition: background-color 420ms var(--liquid);
+  }
+  .item:hover .itemBody { background: rgba(var(--tint),.10); transition-duration: 240ms; }
+  .itemBody:active { background: rgba(var(--tint),.16); transition-duration: 90ms; }
+  .item svg { flex: 0 0 auto; display: block; }
+  .go { color: var(--ink-2); opacity: .45; transition: opacity 420ms var(--liquid), transform 420ms var(--spring); }
+  .item:hover .go { opacity: 1; transform: translateX(2px); transition-duration: 240ms; }
+  .itemClear {
+    flex: 0 0 auto; width: 24px; height: 24px; margin-right: -4px; padding: 0; border: 0; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    color: var(--ink-2); background: transparent; opacity: .55;
+    transition: opacity 420ms var(--liquid), background-color 420ms var(--liquid);
+  }
+  .item:hover .itemClear { opacity: 1; transition-duration: 240ms; }
+  .itemClear:hover { background: rgba(var(--tint),.14); }
+  .clearAllRow {
+    display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; height: 36px; margin-top: 4px;
+    border: 0; border-radius: 12px; cursor: pointer; font: inherit; font-size: 13px; color: var(--ink);
+    background: rgba(var(--tint),.07); transition: background-color 420ms var(--liquid), transform 160ms var(--liquid);
+  }
+  .clearAllRow:hover { background: rgba(255,138,61,.20); transition-duration: 240ms; }
+  .clearAllRow:active { transform: scale(.98); }
+  .clearAllRow svg { color: #ff8a3d; }
+  .flicker { animation: flicker 1500ms cubic-bezier(.45,0,.55,1) infinite; transform-origin: 50% 85%; }
+  @keyframes flicker {
+    0%, 100% { transform: scale(1, 1) skewX(0); }
+    30% { transform: scale(.94, 1.1) skewX(-4deg); }
+    65% { transform: scale(1.03, .95) skewX(3deg); }
+  }
+  .text { flex: 1; min-width: 0; }
+  .title, .meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .meta { font-size: 11px; line-height: 16px; color: var(--ink-2); }
+
+  .provider {
+    margin: 0 -8px; padding: 4px 8px 6px; border-radius: 12px; cursor: pointer;
+    transition: background-color 420ms var(--liquid), transform 160ms var(--liquid);
+  }
+  .provider + .provider { margin-top: 4px; }
+  .provider:hover { background: rgba(var(--tint),.08); transition-duration: 240ms; }
+  .provider:active { transform: scale(.985); }
+  .providerHead .chev { opacity: .45; transition: opacity 420ms var(--liquid), transform 420ms var(--spring); }
+  .provider:hover .providerHead .chev { opacity: 1; transition-duration: 240ms; }
+  .provider.open .providerHead .chev { transform: rotate(180deg); opacity: 1; }
+  .provider.open { background: rgba(var(--tint),.06); }
+  .details { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); animation: details-in 320ms var(--liquid) both; }
+  @keyframes details-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  .detail + .detail { margin-top: 6px; }
+  .detailHead { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; line-height: 18px; color: var(--ink); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .detailHead b { font-weight: 500; }
+  .detailSub { font-size: 11px; line-height: 16px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .details .note { margin-top: 8px; }
+  .providerHead { display: flex; align-items: center; justify-content: space-between; height: 20px; margin-bottom: 2px; }
+  .providerHead .state { display: flex; align-items: center; gap: 5px; font-size: 11px; line-height: 16px; color: var(--ink-2); }
+  .meter {
+    display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 8px; height: 20px;
+    font-size: 11px; color: var(--ink-2); font-variant-numeric: tabular-nums;
+  }
+  .meterText b { color: var(--ink); font-weight: 500; }
+  .toPrefs { color: var(--running); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  .ask { margin: 0 0 10px; padding: 10px 12px; border-radius: 14px; background: var(--tile); box-shadow: var(--tile-shadow), inset 0 0 0 .5px var(--line); }
+  .askText { display: flex; flex-direction: column; font-size: 12px; line-height: 17px; color: var(--ink-2); }
+  .askText b { font-size: 13px; color: var(--ink); font-weight: 600; }
+  .askBtns { display: flex; gap: 6px; margin-top: 8px; }
+  .askBtn { height: 26px; padding: 0 11px; border: 0; border-radius: 999px; font: inherit; font-size: 12px; color: var(--ink); cursor: pointer;
+    background: rgba(var(--tint),.10); transition: background-color 240ms var(--liquid), transform 160ms var(--liquid); }
+  .askBtn:hover { background: rgba(var(--tint),.16); }
+  .askBtn:active { transform: scale(.96); }
+  .askBtn.primary { color: #fff; background: var(--accent); }
+  .askBtn.quiet { background: transparent; color: var(--ink-2); margin-left: auto; }
+  .meterText.left { grid-column: 2 / 4; text-align: left; }
+  .spark { display: block; width: 100%; height: 36px; margin-top: 4px; }
+  .spark polygon { fill: rgba(var(--tint),.07); }
+  .spark polyline { fill: none; stroke: var(--running); stroke-width: 1.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+  .spark circle { fill: var(--running); }
+  .dsActs { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .dsActs .footBtn[disabled] { opacity: .5; pointer-events: none; }
+  .bar { height: 4px; border-radius: 2px; background: rgba(var(--tint),.12); overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: 2px; background: var(--running); transition: width 600ms var(--spring), background-color 420ms var(--liquid); }
+  .bar i.warn { background: #ffb02e; }
+  .bar i.low { background: var(--waiting); }
+  .note { font-size: 11px; line-height: 16px; color: var(--ink-2); }
+  .led { width: 6px; height: 6px; border-radius: 50%; background: rgba(var(--tint),.25); flex: 0 0 auto; transition: background-color 420ms var(--liquid); }
+  .led.on { background: var(--copper); }
+
+  .setting { display: flex; align-items: center; justify-content: space-between; height: 40px; }
+  .switch {
+    position: relative; width: 40px; height: 24px; padding: 0; border: 0; border-radius: 999px; cursor: pointer;
+    background: rgba(var(--tint),.18); transition: background-color 280ms var(--liquid);
+  }
+  .switch::after {
+    content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 3px var(--shadow); transition: transform 420ms var(--spring);
+  }
+  .switch[aria-checked="true"] { background: var(--accent); }
+  .seg button[aria-checked="true"] { color: var(--on-accent); }
+  .switch[aria-checked="true"]::after { transform: translateX(16px); }
+  .switch:focus-visible, .seg button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  .seg { position: relative; display: grid; grid-template-columns: repeat(3, 44px); height: 26px; padding: 0; border-radius: 999px; background: rgba(var(--tint),.12); transition: opacity 240ms var(--liquid); }
+  .seg.off { opacity: .4; pointer-events: none; }
+  .seg i { position: absolute; top: 2px; left: 2px; width: 40px; height: 22px; border-radius: 999px; background: var(--accent); transition: transform 420ms var(--spring); }
+  .seg button { position: relative; border: 0; background: none; padding: 0; color: var(--ink); font: inherit; font-size: 11px; cursor: pointer; font-variant-numeric: tabular-nums; }
+
+  body.offline .switch, body.offline .seg { opacity: .4; pointer-events: none; }
+
+  .foot { display: flex; align-items: center; gap: 6px; padding: 8px 0 2px; }
+  .footBtn, .updateBadge {
+    display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 0; border-radius: 999px;
+    font: inherit; font-size: 12px; color: var(--ink); cursor: pointer; background: rgba(var(--tint),.07);
+    transition: background-color 420ms var(--liquid), transform 160ms var(--liquid);
+  }
+  .footBtn svg { opacity: .7; }
+  .footBtn:hover { background: rgba(var(--tint),.14); transition-duration: 240ms; }
+  .updateBadge { color: #1b1206; font-weight: 600; background: var(--fire-fill); box-shadow: 0 0 12px var(--fire-glow); }
+  .updateBadge:hover { filter: brightness(1.08); }
+  .updateBadge[hidden] { display: none; }
+  section[hidden] { display: none; }
+  .connectHint { flex-direction: column; gap: 8px; }
+  .footBtn:active, .updateBadge:active { transform: scale(.96); }
+  .ver { margin-left: auto; font-size: 11px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  /* Clearing a completion: an ember edge burns across it, sparks lift off,
+     then the row folds away. */
+  .burning > .burnable {
+    animation: burn-away 560ms cubic-bezier(.45,0,.35,1) var(--delay, 0ms) forwards;
+  }
+  .burning::after {
+    content: ''; position: absolute; top: 8px; bottom: 8px; left: 0; width: 3px; border-radius: 2px;
+    background: linear-gradient(180deg, #ffe07a, #ff8a2b 55%, #e8261c);
+    box-shadow: 0 0 10px 3px rgba(255,122,43,.85), 0 0 22px 6px rgba(232,38,28,.35);
+    opacity: 0; pointer-events: none;
+    animation: burn-edge 560ms cubic-bezier(.45,0,.35,1) var(--delay, 0ms) forwards;
+  }
+  @keyframes burn-away {
+    0%   { clip-path: inset(0 0 0 0); filter: none; }
+    20%  { filter: sepia(.7) saturate(2.6) hue-rotate(-18deg) brightness(1.15); }
+    100% { clip-path: inset(0 0 0 100%); filter: sepia(1) saturate(3) hue-rotate(-28deg) brightness(.9); }
+  }
+  @keyframes burn-edge {
+    0%   { opacity: 0; transform: translateX(0); }
+    8%   { opacity: 1; }
+    88%  { opacity: 1; }
+    100% { opacity: 0; transform: translateX(var(--w, 300px)); }
+  }
+  .spark {
+    position: absolute; width: 3px; height: 3px; border-radius: 50%; pointer-events: none; opacity: 0;
+    background: #ffc04d; box-shadow: 0 0 6px 1px rgba(255,122,43,.9);
+    animation: spark-rise 720ms cubic-bezier(.2,.8,.2,1) forwards;
+  }
+  @keyframes spark-rise {
+    0%   { opacity: 1; transform: translate(0, 0) scale(1); }
+    100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(.3); }
+  }
+  .collapsing { overflow: hidden; height: 0 !important; transition: height 260ms cubic-bezier(.32,.72,0,1); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition-duration: .01ms !important; transition-delay: 0ms !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div id="root">
+  <div class="brand rise" aria-label="Fire Ring"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="#e0231c" d="M12 1C13.2 5.5 20 9 20 15.5C20 20 16.4 23 12 23C7.6 23 4 20 4 15.5C4 12.5 5.6 10 7.5 8.5C7.9 10.3 8.7 11.3 9.9 11.8C9.5 7.8 10.4 4 12 1Z"/><path fill="#ff7a2b" d="M12.5 8C13.3 11 17 13 17 17C17 20.2 14.8 22.3 12 22.3C9.2 22.3 7 20.2 7 17.2C7 15.4 7.9 14 9 13C9.3 14.2 9.8 14.9 10.7 15.3C10.5 12.6 11.2 10 12.5 8Z"/><path fill="#ffd84a" d="M12.3 14.5C12.8 16.2 14.7 17.2 14.7 19.2C14.7 20.8 13.5 21.8 12 21.8C10.5 21.8 9.3 20.8 9.3 19.3C9.3 17.7 11.6 16.5 12.3 14.5Z"/></svg><span class="wordmark">Fire Ring</span></div>
+  <div class="ask rise" id="loginAsk" hidden>
+    <div class="askText"><b>开机时自动打开 Fire Ring？</b><span>这样重启电脑后也不会错过提醒</span></div>
+    <div class="askBtns">
+      <button class="askBtn primary" data-login="allow">允许</button>
+      <button class="askBtn" data-login="deny">不允许</button>
+      <button class="askBtn quiet" data-login="never">以后不再提醒</button>
+    </div>
+  </div>
+  <div class="tabs rise" id="tabs" role="tablist" aria-label="任务状态">
+    <i class="thumb" id="tabThumb"></i>
+    <button class="tab" data-tab="waiting" role="tab"><span class="num" id="nWaiting">0</span><span class="statLabel waiting" id="lWaiting"></span></button>
+    <button class="tab" data-tab="running" role="tab"><span class="num" id="nRunning">0</span><span class="statLabel running" id="lRunning"></span></button>
+    <button class="tab" data-tab="finished" role="tab"><span class="num" id="nFinished">0</span><span class="statLabel finished" id="lFinished"></span></button>
+  </div>
+  <section class="rise listWrap">
+    <div id="items" role="tabpanel"></div>
+  </section>
+  <section class="rise" id="quotaSection">
+    <div class="head">额度</div>
+    <div id="quota"></div>
+  </section>
+  <section class="rise">
+    <div class="setting">
+      <span id="islandLabel">刘海提示</span>
+      <button class="switch" id="island" role="switch" aria-checked="true" aria-labelledby="islandLabel"></button>
+    </div>
+    <div class="setting">
+      <span id="peekLabel">完成时自动弹出</span>
+      <button class="switch" id="peek" role="switch" aria-checked="true" aria-labelledby="peekLabel"></button>
+    </div>
+    <div class="setting">
+      <span id="stayLabel">弹出停留</span>
+      <div class="seg" id="seg" role="radiogroup" aria-labelledby="stayLabel">
+        <i id="segThumb"></i>
+        <button data-value="3" role="radio">3 秒</button>
+        <button data-value="6" role="radio">6 秒</button>
+        <button data-value="10" role="radio">10 秒</button>
+      </div>
+    </div>
+  </section>
+  <section class="rise foot">
+    <button class="footBtn" id="openPrefs" type="button"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>设置</button>
+    <button class="updateBadge" id="updateBadge" type="button" hidden></button>
+    <span class="ver" id="ver"></span>
+  </section>
+</div>
+
+<script>
+  const ENDPOINT = 'http://127.0.0.1:47821';
+  const RETRY_MS = 1500;
+  const LISTEN_TIMEOUT_MS = 35000;
+  const TAB_ORDER = ['waiting', 'running', 'finished'];
+  const ROW_HEIGHT = 44;
+  const MAX_VISIBLE_ROWS = 4;
+  const ROOM_BELOW = 12;  // a little air under a short list
+  const EMPTY_HEIGHT = 64;
+  const CLEAR_ALL_HEIGHT = 40;
+  const EMPTY = { waiting: '没有在等你的任务', running: '没有正在跑的任务', finished: '还没有完成的任务' };
+  const FLAME = 'M12 2c1 3.6 6.5 6.2 6.5 12.2a6.5 6.5 0 0 1-13 0c0-2.6 1.3-4.6 2.9-5.9.3 1.7 1.1 2.8 2.3 3.3C10.5 8.3 10.7 5 12 2z';
+  const CHECK = 'M5 12.5l4.5 4.5L19 7.5';
+  const SOURCES = [['claude', 'Claude'], ['codex', 'Codex'], ['dsh', 'DeepSeek']];
+  const $ = (id) => document.getElementById(id);
+  const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const svg = (path, size, attrs) => '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" aria-hidden="true" ' + attrs + '><path d="' + path + '"/></svg>';
+  const solid = 'fill="currentColor"';
+  const line = (w) => 'fill="none" stroke="currentColor" stroke-width="' + w + '" stroke-linecap="round" stroke-linejoin="round"';
+
+  $('lWaiting').innerHTML = svg(FLAME, 12, solid) + '等你';
+  $('lRunning').innerHTML = svg(FLAME, 12, line(2.4)) + '在跑';
+  $('lFinished').innerHTML = svg(CHECK, 12, line(2.6)) + '完成';
+
+  let sessions = [];
+  let revision = -1;
+  let pending = null;
+  let resyncing = false;
+  let writes = 0;
+  let tab = 'waiting';
+  let lastItems = null;
+  let lastQuota = null;
+  let quota = [];
+
+  const api = (path, options = {}) => fetch(ENDPOINT + path, {
+    cache: 'no-store', ...options, headers: { 'X-Bridge-Token': window.__BRIDGE_TOKEN__ || '' },
+  });
+  const send = (p) => { if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.panel) window.webkit.messageHandlers.panel.postMessage(p); };
+  const isOn = (el) => el.getAttribute('aria-checked') === 'true';
+  const setOn = (el, on) => el.setAttribute('aria-checked', String(on));
+  const label = (s) => s.title || s.project || s.id.slice(0, 8);
+  const projectName = (s) => (s.project || '').split('/').filter(Boolean).pop() || '';
+  const ago = (t) => { const m = Math.max(0, Math.round((Date.now() - t) / 60000)); return m ? m + ' 分钟前' : '刚刚'; };
+
+  function setSeconds(value) {
+    const index = [3, 6, 10].indexOf(value);
+    $('segThumb').style.transform = 'translateX(' + Math.max(index, 0) * 44 + 'px)';
+    document.querySelectorAll('#seg button').forEach((b) => b.setAttribute('aria-checked', String(Number(b.dataset.value) === value)));
+  }
+
+  const of = (status) => sessions.filter((s) => s.status === status)
+    .sort((a, b) => (status === 'finished' ? b.finishedAt - a.finishedAt : b.updatedAt - a.updatedAt));
+
+  function when(s) {
+    if (s.status === 'running' && s.backgroundOnly) return '后台运行';
+    if (s.status === 'finished') return s.finishedAt ? ago(s.finishedAt) : '';
+    if (s.status === 'waiting') return s.updatedAt ? ago(s.updatedAt) : '';
+    return '';
+  }
+
+  function itemIcon(status) {
+    if (status === 'waiting') return svg(FLAME, 16, solid);
+    if (status === 'finished') return svg(CHECK, 15, line(2.4));
+    return svg(FLAME, 16, line(2) + ' class="flicker"');
+  }
+
+  // Burns rows away one after another, then resolves once they have folded up.
+  const BURN_AWAY_MS = 560;
+  const FOLD_MS = 260;
+  const SPARKS = 7;
+  let burning = 0;
+
+  function burnAway(nodes, stagger = 0) {
+    if (!nodes.length) return Promise.resolve();
+    burning += 1;
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const each = nodes.map((node, index) => new Promise((resolve) => {
+      const delay = index * stagger;
+      const width = node.offsetWidth;
+      const height = node.offsetHeight;
+      node.style.setProperty('--w', width + 'px');
+      node.style.setProperty('--delay', delay + 'ms');
+      if (!still) {
+        for (let i = 0; i < SPARKS; i++) {
+          const along = (i + Math.random()) / SPARKS;
+          const spark = document.createElement('i');
+          spark.className = 'spark';
+          spark.style.left = Math.round(along * width) + 'px';
+          spark.style.top = Math.round(height * (0.3 + Math.random() * 0.4)) + 'px';
+          spark.style.setProperty('--dx', Math.round(Math.random() * 16 - 8) + 'px');
+          spark.style.setProperty('--dy', -Math.round(12 + Math.random() * 18) + 'px');
+          spark.style.animationDelay = Math.round(delay + along * BURN_AWAY_MS) + 'ms';
+          node.appendChild(spark);
+        }
+        node.classList.add('burning');
+      }
+      setTimeout(() => {
+        node.style.height = height + 'px';
+        void node.offsetHeight;
+        node.classList.add('collapsing');
+        setTimeout(resolve, still ? 0 : FOLD_MS);
+      }, still ? 0 : delay + BURN_AWAY_MS);
+    }));
+    return Promise.all(each).then(() => { burning -= 1; });
+  }
+
+  function renderItems() {
+    const rows = of(tab);
+    const html = rows.length
+      ? rows.map((s) =>
+        '<div class="item' + (s.status === 'finished' ? ' clearable' : '') + '" data-id="' + esc(s.id) + '">' +
+        '<div class="itemBody burnable"><span class="' + s.status + '">' + itemIcon(s.status) + '</span>' +
+        '<div class="text"><div class="title">' + esc(label(s)) + '</div>' +
+        '<div class="meta">' + esc([s.providerName, projectName(s), when(s)].filter(Boolean).join(' · ')) + '</div></div>' +
+        (s.status === 'finished' || s.status === 'waiting'
+          ? '<button class="itemClear" data-act="clear" aria-label="' + (s.status === 'waiting' ? '清除这条等你' : '清除这条完成') + '"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>'
+          : '<svg class="go" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>') +
+        '</div></div>').join('') +
+        (tab === 'finished' ? '<button class="clearAllRow" data-act="clearAll">' + svg(FLAME, 13, solid) + '全部清除</button>' : '')
+      : connectedCount() === 0
+        ? '<div class="empty connectHint">还没有连接任何工具<button class="footBtn" data-act="connect">去连接</button></div>'
+        : '<div class="empty">' + EMPTY[tab] + '</div>';
+    if (html !== lastItems) {
+      lastItems = html;
+      $('items').innerHTML = html;
+    }
+  }
+
+  function itemsHeight() {
+    const count = of(tab).length;
+    if (!count) return EMPTY_HEIGHT;
+    if (tab === 'finished') return Math.min(count, MAX_VISIBLE_ROWS) * ROW_HEIGHT + CLEAR_ALL_HEIGHT;
+    return count >= MAX_VISIBLE_ROWS ? MAX_VISIBLE_ROWS * ROW_HEIGHT : count * ROW_HEIGHT + ROOM_BELOW;
+  }
+
+  // Sends where the panel will end up, once, rather than following the
+  // transition, so the app runs one animation instead of chasing many.
+  // scrollHeight, not offsetHeight: it is the content's full height even while
+  // the panel is capped and scrolling.
+  function panelHeight() {
+    return $('root').scrollHeight - $('items').offsetHeight + itemsHeight();
+  }
+
+  let maxHeight = 700;   // set by the app from the screen the panel opens on
+  window.__setMaxHeight = (n) => { if (n > 0) maxHeight = n; };
+
+  function syncHeight(animated) {
+    const items = $('items');
+    const natural = panelHeight();
+    const target = Math.min(natural, maxHeight);
+    const root = $('root');
+    root.classList.toggle('scrolls', natural > maxHeight);
+    root.style.maxHeight = natural > maxHeight ? maxHeight + 'px' : '';
+    if (!animated) items.style.transition = 'none';
+    items.style.height = itemsHeight() + 'px';
+    if (!animated) {
+      void items.offsetHeight;
+      items.style.transition = '';
+    }
+    send({ kind: 'panelSize', height: target });
+    return target;
+  }
+
+  function moveThumb() {
+    const selected = document.querySelector('.tab[data-tab="' + tab + '"]');
+    document.querySelectorAll('.tab').forEach((b) => {
+      const on = b === selected;
+      b.classList.toggle('selected', on);
+      b.setAttribute('aria-selected', String(on));
+    });
+    $('tabThumb').style.width = selected.offsetWidth + 'px';
+    $('tabThumb').style.transform = 'translateX(' + selected.offsetLeft + 'px)';
+  }
+
+  function selectTab(next) {
+    if (next === tab) return;
+    const direction = TAB_ORDER.indexOf(next) > TAB_ORDER.indexOf(tab) ? 1 : -1;
+    tab = next;
+    moveThumb();
+    renderItems();
+    syncHeight(true);
+    $('items').scrollTop = 0;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    $('items').animate(
+      [{ opacity: 0, transform: 'translateX(' + direction * 18 + 'px)' }, { opacity: 1, transform: 'none' }],
+      { duration: 280, easing: 'cubic-bezier(.2,.8,.2,1)' },
+    );
+  }
+
+  // Open on whatever most needs attention.
+  const mostUrgent = () => TAB_ORDER.find((status) => of(status).length) || 'running';
+
+  const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  const pad = (n) => String(n).padStart(2, '0');
+  const WINDOW_LABEL = { five_hour: '5 小时', weekly: '本周' };
+  const QUOTA_NOTE = {
+    loading: '正在读取额度…',
+    no_login: '还没登录 Claude Code，打开「设置」看怎么连接',
+    denied: '钥匙串没有放行，30 分钟后会再问一次',
+    expired: '登录已过期，在终端打开一次 Claude Code 即可恢复',
+    error: '暂时查不到，稍后会自动重试',
+    egress_down: '网络连不上，已暂停查询，5 分钟后重试',
+    exit_refused: 'Anthropic 拒绝了当前网络出口，请检查代理节点，15 分钟后重试',
+    offline: '已断网，不查询（可在「设置 → 网络」恢复）',
+    no_key: '还没填 API Key。<a class="toPrefs" data-prefs="connect">去设置里填写（有步骤说明）</a>',
+    bad_key: 'DeepSeek 不接受保存的 API Key。<a class="toPrefs" data-prefs="connect">去设置里重新填写</a>',
+    limits_only: '还没用完。桌面版不提供实时百分比，用完时这里会显示几点重置',
+    unknown: '还没有用过，读不到额度',
+    rate_limited: '查询过于频繁，稍后会自动重试',
+    pay_as_you_go: '按量计费，没有 5 小时和每周额度',
+  };
+  const STALE_MS = 30 * 60000;
+
+  function resetText(ms) {
+    const at = new Date(ms);
+    const today = new Date();
+    const days = Math.round((new Date(at.getFullYear(), at.getMonth(), at.getDate()) - new Date(today.getFullYear(), today.getMonth(), today.getDate())) / 86400000);
+    const day = days === 0 ? '今天' : days === 1 ? '明天' : WEEKDAYS[at.getDay()];
+    return day + ' ' + pad(at.getHours()) + ':' + pad(at.getMinutes()) + ' 重置';
+  }
+
+  function ageText(ms) {
+    const minutes = Math.round((Date.now() - ms) / 60000);
+    return minutes < 60 ? minutes + ' 分钟前' : Math.round(minutes / 60) + ' 小时前';
+  }
+
+  function meterHtml(w) {
+    const level = w.leftPercent <= 10 ? ' low' : w.leftPercent <= 30 ? ' warn' : '';
+    const when = w.reset ? '已重置' : w.resetsAt ? resetText(w.resetsAt) : '';
+    return '<div class="meter"><span>' + WINDOW_LABEL[w.kind] + '</span>' +
+      '<span class="bar"><i class="' + level.trim() + '" style="width:' + w.leftPercent + '%"></i></span>' +
+      '<span class="meterText">剩 <b>' + Math.round(w.leftPercent) + '%</b>' + (when ? ' · ' + when : '') + '</span></div>';
+  }
+
+  // Claude and Codex have time-window limits; DeepSeek bills per token, so it
+  // shows the account balance instead.
+  const QUOTA_SOURCES = [['claude', 'Claude'], ['codex', 'Codex'], ['dsh', 'DeepSeek']];
+  const money = (currency, n) => (currency === 'CNY' ? '¥' : currency === 'USD' ? '$' : currency + ' ') + Number(n).toFixed(2);
+
+  // DeepSeek: the balance, in the same row style as the other platforms' limits.
+  function balanceHtml(q) {
+    const spend = q.spending;
+    return q.balances.map((b, i) => {
+      const today = i === 0 && spend && spend.currency === b.currency ? ' · 今天花了 ' + money(b.currency, spend.today) : '';
+      return '<div class="meter"><span>余额</span><span class="meterText left"><b>' + money(b.currency, b.total) + '</b>' + today + '</span></div>';
+    }).join('') + (q.available === false ? '<div class="note">余额不足，暂时无法调用</div>' : '')
+      + (q.stale ? '<div class="note">' + (STALE_NOTE[q.stale] || '暂时沿用') + ' ' + ageText(q.observedAt) + '的余额，会自动重试</div>' : '');
+  }
+
+  // The last 24 hours of balance readings as a small line.
+  function sparkHtml(points) {
+    if (!points || points.length < 2) return '<div class="detailSub">记录满两次后，这里会画出 24 小时的余额曲线</div>';
+    const W = 280, H = 36, pad = 3;
+    const t0 = points[0].at, t1 = points[points.length - 1].at;
+    const lo = Math.min(...points.map((p) => p.total)), hi = Math.max(...points.map((p) => p.total));
+    const x = (p) => pad + (t1 === t0 ? 0 : (p.at - t0) / (t1 - t0)) * (W - 2 * pad);
+    const y = (p) => hi === lo ? H / 2 : pad + (1 - (p.total - lo) / (hi - lo)) * (H - 2 * pad);
+    const line = points.map((p) => x(p).toFixed(1) + ',' + y(p).toFixed(1)).join(' ');
+    const last = points[points.length - 1];
+    return '<svg class="spark" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-label="24 小时余额曲线">' +
+      '<polygon points="' + pad + ',' + H + ' ' + line + ' ' + (W - pad) + ',' + H + '"/>' +
+      '<polyline points="' + line + '"/><circle cx="' + x(last).toFixed(1) + '" cy="' + y(last).toFixed(1) + '" r="2.5"/></svg>';
+  }
+
+  function balanceDetailsHtml(q) {
+    const b = q.balances[0];
+    const spend = q.spending;
+    let html = detailPair('赠送余额', money(b.currency, b.granted)) + detailPair('充值余额', money(b.currency, b.toppedUp));
+    if (spend && spend.currency === b.currency) {
+      html += detailPair('今天花费', money(b.currency, spend.today), '近 7 天 ' + money(b.currency, spend.week) +
+        (spend.trackedSince ? ' · 从 ' + shortDate(spend.trackedSince) + ' 开始记录' : ''));
+      html += '<div class="detail"><div class="detailHead"><span>24 小时余额</span></div>' + sparkHtml(spend.day) + '</div>';
+    }
+    html += detailPair('调用状态', q.available === false ? '余额不足' : '可以正常调用');
+    if (q.observedAt) html += '<div class="note">' + ageText(q.observedAt) + '查询 · 每 10 分钟自动更新 · 花费按两次查询的差额计算</div>';
+    html += '<div class="dsActs"><button class="footBtn" data-ds="refresh">立即刷新</button>' +
+      '<button class="footBtn" data-ds="topup">去充值</button><button class="footBtn" data-ds="usage">用量明细</button></div>';
+    return '<div class="details">' + html + '</div>';
+  }
+  const detailPair = (label, value, sub) => '<div class="detail"><div class="detailHead"><span>' + label + '</span><span><b>' + value + '</b></span></div>' +
+    (sub ? '<div class="detailSub">' + sub + '</div>' : '') + '</div>';
+  const shortDate = (ms) => { const d = new Date(ms); return (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日'; };
+  const CHEVRON = '<svg class="chev" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+  const SOURCE_OF = { claude: '从 Anthropic 查询，约每 5 分钟更新', codex: '来自 Codex 最近一次回复' };
+  const STALE_NOTE = { rate_limited: '查询过于频繁，暂时沿用', error: '这次没查到，暂时沿用' };
+  let expanded = null;   // the platform whose details are open
+
+  function untilText(ms) {
+    const minutes = Math.max(0, Math.round((ms - Date.now()) / 60000));
+    if (minutes < 60) return '还有 ' + minutes + ' 分钟';
+    const hours = Math.floor(minutes / 60);
+    if (hours < 48) return '还有 ' + hours + ' 小时 ' + (minutes % 60) + ' 分';
+    return '还有 ' + Math.round(hours / 24) + ' 天';
+  }
+
+  function fullReset(ms) {
+    const at = new Date(ms);
+    return (at.getMonth() + 1) + ' 月 ' + at.getDate() + ' 日 ' + WEEKDAYS[at.getDay()] + ' ' + pad(at.getHours()) + ':' + pad(at.getMinutes());
+  }
+
+  function detailRow(label, w) {
+    const used = w.reset ? '剩 <b>100%</b>' : '已用 <b>' + Math.round(w.usedPercent) + '%</b>';
+    const sub = w.reset ? '已重置，下次使用后开始计时' : w.resetsAt ? untilText(w.resetsAt) + ' · ' + fullReset(w.resetsAt) + ' 重置' : '';
+    return '<div class="detail"><div class="detailHead"><span>' + label + '</span><span>' + used + '</span></div>' +
+      (sub ? '<div class="detailSub">' + sub + '</div>' : '') + '</div>';
+  }
+
+  // Everything known about one platform's limits, with where it came from.
+  function detailsHtml(q) {
+    let html = q.windows.map((w) => detailRow(WINDOW_LABEL[w.kind], w)).join('');
+    for (const e of q.extras || []) html += detailRow(e.label, e);
+    if (q.extraUsage && q.extraUsage.usedPercent !== null) {
+      html += '<div class="detail"><div class="detailHead"><span>额外用量</span><span>本月已用 <b>' + Math.round(q.extraUsage.usedPercent) + '%</b></span></div></div>';
+    }
+    if (q.credits) {
+      html += '<div class="detail"><div class="detailHead"><span>额外积分</span><span>' + (q.credits.unlimited ? '不限量' : '余额 <b>' + esc(q.credits.balance) + '</b>') + '</span></div></div>';
+    }
+    if (q.observedAt) {
+      html += '<div class="note">数据' + ageText(q.observedAt) + '更新 · ' + (SOURCE_OF[q.id] || '') + '</div>';
+    }
+    return '<div class="details">' + html + '</div>';
+  }
+
+  // Each platform: whether it is connected, then how much of each window is left.
+  // Which tools are connected, as the bridge last said; null until it has.
+  let providers = null;
+  let quotaShown = null;   // which limits the user chose to see (Settings → General)
+  const connected = (id) => !providers || providers[id] === true;
+  const quotaOn = (id) => connected(id) && (quotaShown ? quotaShown[id] === true : id === 'codex');
+  const connectedCount = () => (providers ? Object.values(providers).filter(Boolean).length : 1);
+
+  function renderQuota() {
+    const shown = QUOTA_SOURCES.filter(([id]) => quotaOn(id));
+    const section = $('quotaSection');
+    if (section.hidden !== !shown.length) section.hidden = !shown.length;
+    const html = shown.map(([id, name]) => {
+      const mine = sessions.filter((s) => s.provider === id);
+      const running = mine.filter((s) => s.status === 'running').length;
+      const text = running ? running + ' 在跑' : mine.length ? mine.length + ' 条会话' : '未发现';
+      const q = quota.find((p) => p.id === id);
+      let body = '';
+      if (q && q.kind === 'balance' && (q.balances || []).length) {
+        body = balanceHtml(q);
+        if (expanded === id) body += balanceDetailsHtml(q);
+      } else if (q && q.windows.length) {
+        body = q.windows.map(meterHtml).join('');
+        if (q.stale) body += '<div class="note">' + (STALE_NOTE[q.stale] || '暂时沿用') + ' ' + ageText(q.observedAt) + '的额度，会自动重试</div>';
+        else if (id === 'codex' && q.observedAt && Date.now() - q.observedAt > STALE_MS) body += '<div class="note">额度来自 ' + ageText(q.observedAt) + '的最后一次使用</div>';
+        if (expanded === id) body += detailsHtml(q);
+      } else if (q) {
+        const detail = q.state === 'egress_down' && q.detail ? '（' + esc(q.detail) + '）' : '';
+        body = '<div class="note">' + (QUOTA_NOTE[q.state] || '暂时读不到额度') + detail + '</div>';
+      }
+      const canOpen = Boolean(q && (q.windows.length || (q.kind === 'balance' && (q.balances || []).length)));
+      return '<div class="provider' + (expanded === id ? ' open' : '') + '" role="button" aria-expanded="' + (expanded === id) + '" data-provider="' + id + '"' + (canOpen ? ' title="展开详细用量"' : '') + '><div class="providerHead"><span>' + name + '</span>' +
+        '<span class="state"><span class="led' + (mine.length ? ' on' : '') + '"></span>' + text + (canOpen ? CHEVRON : '') + '</span></div>' + body + '</div>';
+    }).join('');
+    if (html !== lastQuota) { lastQuota = html; $('quota').innerHTML = html; }
+  }
+
+  // Clicking a platform opens its details in place; clicking again folds them.
+  $('quota').addEventListener('click', (event) => {
+    const link = event.target.closest('[data-prefs]');
+    if (link) {
+      send({ kind: 'openPreferences', section: link.dataset.prefs });
+      return;
+    }
+    const act = event.target.closest('[data-ds]');
+    if (act) {
+      const what = act.dataset.ds;
+      if (what === 'topup') send({ kind: 'openURL', url: 'https://platform.deepseek.com/top_up' });
+      if (what === 'usage') send({ kind: 'openURL', url: 'https://platform.deepseek.com/usage' });
+      if (what === 'refresh') {
+        act.disabled = true;
+        act.textContent = '刷新中…';
+        api('/deepseek/recheck', { method: 'POST' }).catch(() => {}).finally(() => loadQuota());
+      }
+      return;
+    }
+    const provider = event.target.closest('.provider');
+    if (!provider || !provider.querySelector('.chev')) return;
+    const id = provider.dataset.provider;
+    expanded = expanded === id ? null : id;
+    render();
+  });
+
+  async function loadQuota() {
+    try {
+      const response = await api('/quota');
+      const data = await response.json();
+      quota = Array.isArray(data.quota) ? data.quota : [];
+      render();
+    } catch {
+      /* keeps the last reading */
+    }
+  }
+
+  function render() {
+    $('nWaiting').textContent = of('waiting').length;
+    $('nRunning').textContent = of('running').length;
+    $('nFinished').textContent = of('finished').length;
+    // The quota block first: the height sent to the app is measured from the
+    // page as it will look, so opening or folding details resizes at once.
+    renderQuota();
+    // Rows still burning stay put; the list is redrawn when they are gone.
+    if (!burning) {
+      renderItems();
+      syncHeight(true);
+    }
+  }
+
+  function bind(el, route, after) {
+    el.addEventListener('click', async () => {
+      const next = !isOn(el);
+      writes += 1;
+      setOn(el, next);
+      after?.(next);
+      try {
+        const response = await api(route + '?enabled=' + (next ? '1' : '0'), { method: 'POST' });
+        if (!response.ok) throw new Error(String(response.status));
+      } catch {
+        setOn(el, !next);
+        after?.(!next);
+      }
+    });
+  }
+  bind($('island'), '/island');
+  bind($('peek'), '/autopeek', (on) => $('seg').classList.toggle('off', !on));
+
+  $('seg').addEventListener('click', (event) => {
+    const button = event.target.closest('button');
+    if (!button) return;
+    writes += 1;
+    setSeconds(Number(button.dataset.value));
+    api('/peek-seconds?value=' + button.dataset.value, { method: 'POST' }).catch(() => {});
+  });
+
+  $('tabs').addEventListener('click', (event) => {
+    const button = event.target.closest('.tab');
+    if (button) selectTab(button.dataset.tab);
+  });
+
+  const finishedRows = () => [...document.querySelectorAll('#items .item.clearable:not(.burning)')];
+
+  $('items').addEventListener('click', (event) => {
+    const action = event.target.closest('[data-act]')?.dataset.act;
+    if (action === 'connect') {
+      send({ kind: 'openPreferences', section: 'connect' });
+      return;
+    }
+    if (action === 'clearAll') {
+      send({ kind: 'burn', scope: 'all' });   // 呼燃：一下子全部烧掉
+      api('/dismiss-finished', { method: 'POST' }).catch(() => {});
+      for (const s of sessions) if (s.status === 'finished') { s.status = 'idle'; s.finished = false; }
+      burnAway(finishedRows(), 80).then(render);
+      return;
+    }
+    if (action === 'clear') {
+      send({ kind: 'burn', scope: 'one' });   // 余烬：短促的一下
+      const item = event.target.closest('.item');
+      const target = sessions.find((s) => s.id === item.dataset.id);
+      if (target) { target.status = 'idle'; target.finished = false; }
+      api('/dismiss?id=' + encodeURIComponent(item.dataset.id), { method: 'POST' }).catch(() => {});
+      burnAway([item]).then(render);
+      return;
+    }
+    const row = event.target.closest('.item');
+    const session = row && sessions.find((s) => s.id === row.dataset.id);
+    if (!session) return;
+    if (session.status === 'finished') api('/dismiss?id=' + encodeURIComponent(session.id), { method: 'POST' }).catch(() => {});
+    const kind = session.open && session.open.kind;
+    if (kind === 'url') send({ kind: 'openURL', url: session.open.value });
+    else if (kind === 'terminal') send({ kind: 'terminal', command: session.open.value });
+    else if (kind === 'app') send({ kind: 'openApp', bundle: session.open.value });
+    else {
+      api('/open?id=' + encodeURIComponent(session.id), { method: 'POST' }).catch(() => {});
+      send({ kind: 'focus' });
+    }
+    send({ kind: 'closePanel' });
+  });
+
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') send({ kind: 'closePanel' }); });
+
+  // Called by the app each time the panel opens, to replay the content rise.
+  // Asks again straight away, in case a request went stale while hidden.
+  window.__resync = () => {
+    revision = -1;
+    resyncing = true;
+    pending?.abort();
+  };
+
+  window.__prepareOpen = (max) => {
+    if (max > 0) maxHeight = max;
+    $('root').scrollTop = 0;
+    expanded = null;
+    window.__resync();
+    loadQuota();
+    tab = mostUrgent();
+    moveThumb();
+    renderItems();
+    return syncHeight(false);
+  };
+
+  window.__onOpen = () => {
+    document.body.classList.remove('shown');
+    void document.body.offsetHeight;
+    requestAnimationFrame(() => document.body.classList.add('shown'));
+  };
+
+  // The version in the corner, and a badge once a newer one is out.
+  const UPDATE_TEXT = { available: '有新版本 v', downloading: '正在下载 v', ready: '重启以更新到 v' };
+  function showVersion(version, update) {
+    $('ver').textContent = version ? 'v' + version : '';
+    const badge = $('updateBadge');
+    const show = Boolean(update && UPDATE_TEXT[update.phase]);
+    if (show) badge.textContent = UPDATE_TEXT[update.phase] + update.version;
+    if (badge.hidden === show) {
+      badge.hidden = !show;
+      syncHeight(true);
+    }
+  }
+  $('openPrefs').addEventListener('click', () => send({ kind: 'openPreferences' }));
+
+  // Launch at login: asked here (after first setup) until it is on, the user
+  // says no for this run, or says never.
+  window.__setLoginAsk = (show) => { $('loginAsk').hidden = !show; };
+  $('loginAsk').addEventListener('click', (event) => {
+    const choice = event.target.closest('[data-login]')?.dataset.login;
+    if (!choice) return;
+    send({ kind: 'loginPrompt', choice });
+    if (choice === 'never') api('/config?loginPrompt=never', { method: 'POST' }).catch(() => {});
+    $('loginAsk').hidden = true;
+    syncHeight(true);
+  });
+  $('updateBadge').addEventListener('click', () => send({ kind: 'openPreferences', section: 'update' }));
+
+  async function listen() {
+    for (;;) {
+      const controller = new AbortController();
+      pending = controller;
+      const timeout = setTimeout(() => controller.abort(), LISTEN_TIMEOUT_MS);
+      try {
+        const seen = writes;
+        const response = await api('/state?rev=' + revision, { signal: controller.signal });
+        const data = await response.json();
+        document.body.classList.remove('offline');
+        $('islandLabel').textContent = '刘海提示';
+        const was = new Map(sessions.map((s) => [s.id, s.status]));
+        sessions = Array.isArray(data.sessions) ? data.sessions : [];
+        if (data.providers) providers = data.providers;
+        if (data.quotaShown) quotaShown = data.quotaShown;
+        document.documentElement.dataset.theme = data.theme || 'dark';
+        // Completions cleared elsewhere burn away here too rather than vanish.
+        const gone = finishedRows().filter((row) => was.get(row.dataset.id) === 'finished'
+          && (sessions.find((s) => s.id === row.dataset.id)?.status ?? 'idle') === 'idle');
+        if (gone.length) burnAway(gone, 80).then(render);
+        render();
+        if (seen === writes) { // otherwise a click landed mid-read and this answer predates it
+          setOn($('island'), data.islandEnabled !== false);
+          setOn($('peek'), data.autoPeek !== false);
+          $('seg').classList.toggle('off', data.autoPeek === false);
+          setSeconds(data.peekSeconds || 6);
+        }
+        showVersion(data.version, data.update);
+        revision = data.rev;   // only once drawn, so a failed draw is retried
+      } catch (error) {
+        if (!resyncing && error.name !== 'AbortError') {
+          document.body.classList.add('offline');
+          $('islandLabel').textContent = '后台未运行';
+        }
+        if (!resyncing) await new Promise((resolve) => setTimeout(resolve, RETRY_MS));
+      } finally {
+        clearTimeout(timeout);
+        resyncing = false;
+      }
+    }
+  }
+
+  setSeconds(6);
+  document.body.classList.add('shown');
+  moveThumb();
+  document.fonts.ready.then(() => { moveThumb(); syncHeight(false); });
+  listen();
+  loadQuota();
+  setInterval(render, 30000);
+  setInterval(loadQuota, 60000);
+</script>
+</body>
+</html>
