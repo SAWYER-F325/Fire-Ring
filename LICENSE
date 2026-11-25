@@ -19,10 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-The MIT License above covers Fire Ring's own source code. It does not cover the
-third-party components and trademarks listed in LICENSES.md, such as the logos
-of Claude, Codex, DeepSeek, Kimi, Cursor and Grok in app/logos/, which belong to
-their respective owners.
