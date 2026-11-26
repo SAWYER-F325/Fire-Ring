@@ -35,12 +35,16 @@ test('connecting one tool leaves the others as they were', () => {
 test('limits are shown only for tools the user chose; Claude is off by default', async () => {
   const { connectedQuota } = await import('../src/quota.mjs');
   writeConfig({ providers: { claude: true, codex: true } });
-  assert.deepEqual(readConfig().quota, { claude: false, codex: true, dsh: false });
+  assert.deepEqual(readConfig().quota, {
+    claude: false, codex: true, dsh: false, antigravity: false, cursor: false, grok: false,
+  });
   assert.deepEqual(readQuota().map((q) => q.id), ['codex']);
   // Fire Ring itself still sees every connected tool, e.g. to know a limit is used up.
   assert.deepEqual(connectedQuota().map((q) => q.id), ['claude', 'codex']);
   writeConfig({ quota: { claude: true, codex: false } });
   assert.deepEqual(readQuota().map((q) => q.id), ['claude']);
   writeConfig({ quota: { codex: true } });
-  assert.deepEqual(readConfig().quota, { claude: true, codex: true, dsh: false });
+  assert.deepEqual(readConfig().quota, {
+    claude: true, codex: true, dsh: false, antigravity: false, cursor: false, grok: false,
+  });
 });

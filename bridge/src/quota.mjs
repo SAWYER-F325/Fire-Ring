@@ -10,6 +10,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { latestCodexFiles } from './providers.mjs';
+import { readAntigravityQuota } from './provider-antigravity.mjs';
+import { readCursorQuota } from './provider-cursor.mjs';
+import { readGrokQuota } from './provider-grok.mjs';
 import { windowOf } from './window.mjs';
 import { readConfig } from './config.mjs';
 import { STATUSLINE_FILE } from './statusline.mjs';
@@ -223,6 +226,9 @@ export function connectedQuota(now = Date.now()) {
   return [
     providers.claude ? readClaudeQuota(now) : null,
     providers.codex ? readCodexQuota(now) : null,
+    providers.antigravity ? readAntigravityQuota(now) : null,
+    providers.cursor ? readCursorQuota(now) : null,
+    providers.grok ? readGrokQuota(now) : null,
   ].filter(Boolean);
 }
 

@@ -562,7 +562,7 @@
 
   const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
   const pad = (n) => String(n).padStart(2, '0');
-  const WINDOW_LABEL = { five_hour: '5 小时', weekly: '本周' };
+  const WINDOW_LABEL = { five_hour: '5 小时', weekly: '本周', billing: '周期', monthly: '本月', scoped: '单项' };
   const QUOTA_NOTE = {
     loading: '正在读取额度…',
     no_login: '还没登录 Claude Code，打开「设置」看怎么连接',
@@ -604,7 +604,64 @@
 
   // Claude and Codex have time-window limits; DeepSeek bills per token, so it
   // shows the account balance instead.
-  const QUOTA_SOURCES = [['claude', 'Claude'], ['codex', 'Codex'], ['dsh', 'DeepSeek']];
+  const QUOTA_SOURCES = [
+    ['claude', 'Claude'], ['codex', 'Codex'], ['dsh', 'DeepSeek'],
+    ['antigravity', 'Antigravity'], ['cursor', 'Cursor'], ['grok', 'Grok'],
+  ];
+  const PLAN_LABEL = {
+    free: 'Free', pro: 'Pro', pro_plus: 'Pro+', ultra: 'Ultra',
+    business: 'Business', enterprise: 'Enterprise',
+  };
+  const SUB_STATUS_LABEL = {
+    trialing: '试用中', past_due: '待续费', unpaid: '未支付', paused: '已暂停',
+  };
+  const fmtPlan = (p) => PLAN_LABEL[String(p || '').toLowerCase()] || String(p || '');
+  const fmtLocalTokens = (n) => {
+    const v = Number(n) || 0;
+    if (v >= 1_000_000) return (v / 1_000_000).toFixed(1) + 'M tokens';
+    if (v >= 10_000) return (v / 10_000).toFixed(1) + ' 万 tokens';
+    return v.toLocaleString('zh-CN') + ' tokens';
+  };
+  function usageHtml(q) {
+    const rows = [];
+    if (q.plan) {
+      const stLabel = SUB_STATUS_LABEL[String(q.subscriptionStatus || '').toLowerCase()] || '';
+      const st = stLabel ? '（' + stLabel + '）' : '';
+      rows.push('<div class="meter"><span>套餐</span><span class="meterText left"><b>' + esc(fmtPlan(q.plan)) + '</b>' + st + '</span></div>');
+    }
+    const u = q.localUsage;
+    if (u && u.fiveHour && u.fiveHour.messages) {
+      const unit = u.unit === 'sessions' ? '个会话' : '次回复';
+      const tok = u.fiveHour.totalTokens ? ' · ' + fmtLocalTokens(u.fiveHour.totalTokens) : '';
+      rows.push('<div class="meter"><span>5 小时</span><span class="meterText left"><b>' + u.fiveHour.messages + ' ' + unit + '</b>' + tok + '</span></div>');
+    } else if (u && u.today && u.today.messages) {
+      const unit = u.unit === 'sessions' ? '个会话' : '次回复';
+      const tok = u.today.totalTokens ? ' · ' + fmtLocalTokens(u.today.totalTokens) : '';
+      rows.push('<div class="meter"><span>今日</span><span class="meterText left"><b>' + u.today.messages + ' ' + unit + '</b>' + tok + '</span></div>');
+    }
+    return rows.join('') || '<div class="note">已连接，有新对话后自动统计本机用量</div>';
+  }
+  function usageDetailsHtml(q) {
+    let html = '';
+    const u = q.localUsage;
+    if (u && u.fiveHour && u.fiveHour.messages) {
+      const unit = u.unit === 'sessions' ? '个活跃会话' : '次回复';
+      const sub = u.fiveHour.totalTokens
+        ? fmtLocalTokens(u.fiveHour.totalTokens) + (u.fiveHour.activeTokens && u.fiveHour.activeTokens < u.fiveHour.totalTokens ? ' · 非缓存 ' + fmtLocalTokens(u.fiveHour.activeTokens) : '')
+        : '';
+      html += detailPair('近 5 小时', u.fiveHour.messages + ' ' + unit, sub);
+    }
+    if (u && u.today && u.today.messages) {
+      const unit = u.unit === 'sessions' ? '个活跃会话' : '次回复';
+      const sub = u.today.totalTokens
+        ? fmtLocalTokens(u.today.totalTokens) + (u.today.activeTokens && u.today.activeTokens < u.today.totalTokens ? ' · 非缓存 ' + fmtLocalTokens(u.today.activeTokens) : '')
+        : '';
+      html += detailPair('今日累计', u.today.messages + ' ' + unit, sub);
+    }
+    if (u && u.model) html += detailPair('最近模型', esc(u.model));
+    if (q.observedAt) html += '<div class="note">数据' + ageText(q.observedAt) + '更新 · 仅读取本机记录，不借用账号登录</div>';
+    return '<div class="details">' + html + '</div>';
+  }
   const money = (currency, n) => (currency === 'CNY' ? '¥' : currency === 'USD' ? '$' : currency + ' ') + Number(n).toFixed(2);
 
   // DeepSeek: the balance, in the same row style as the other platforms' limits.
@@ -651,7 +708,13 @@
     (sub ? '<div class="detailSub">' + sub + '</div>' : '') + '</div>';
   const shortDate = (ms) => { const d = new Date(ms); return (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日'; };
   const CHEVRON = '<svg class="chev" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
-  const SOURCE_OF = { claude: '从 Anthropic 查询，约每 5 分钟更新', codex: '来自 Codex 最近一次回复' };
+  const SOURCE_OF = {
+    claude: '从 Anthropic 查询，约每 5 分钟更新',
+    codex: '来自 Codex 最近一次回复',
+    antigravity: '来自 Antigravity 本机记录',
+    cursor: '来自 Cursor 本机记录',
+    grok: '来自 Grok 桌面版与命令行本机记录',
+  };
   const STALE_NOTE = { rate_limited: '查询过于频繁，暂时沿用', error: '这次没查到，暂时沿用' };
   let expanded = null;   // the platform whose details are open
 
@@ -681,6 +744,16 @@
     for (const e of q.extras || []) html += detailRow(e.label, e);
     if (q.extraUsage && q.extraUsage.usedPercent !== null) {
       html += '<div class="detail"><div class="detailHead"><span>额外用量</span><span>本月已用 <b>' + Math.round(q.extraUsage.usedPercent) + '%</b></span></div></div>';
+    }
+    if (q.plan) html = detailPair('当前套餐', esc(fmtPlan(q.plan))) + html;
+    if (q.localUsage) {
+      const u = q.localUsage;
+      if (u.fiveHour && u.fiveHour.messages) {
+        html += detailPair('近 5 小时本机活跃', u.fiveHour.messages + ' 次', u.fiveHour.totalTokens ? fmtLocalTokens(u.fiveHour.totalTokens) : '');
+      }
+      if (u.today && u.today.messages) {
+        html += detailPair('今日累计', u.today.messages + ' 次', u.today.totalTokens ? fmtLocalTokens(u.today.totalTokens) : '');
+      }
     }
     if (q.credits) {
       html += '<div class="detail"><div class="detailHead"><span>额外积分</span><span>' + (q.credits.unlimited ? '不限量' : '余额 <b>' + esc(q.credits.balance) + '</b>') + '</span></div></div>';
@@ -717,11 +790,14 @@
         if (q.stale) body += '<div class="note">' + (STALE_NOTE[q.stale] || '暂时沿用') + ' ' + ageText(q.observedAt) + '的额度，会自动重试</div>';
         else if (id === 'codex' && q.observedAt && Date.now() - q.observedAt > STALE_MS) body += '<div class="note">额度来自 ' + ageText(q.observedAt) + '的最后一次使用</div>';
         if (expanded === id) body += detailsHtml(q);
+      } else if (q && q.kind === 'usage' && q.state === 'ok') {
+        body = usageHtml(q);
+        if (expanded === id) body += usageDetailsHtml(q);
       } else if (q) {
         const detail = q.state === 'egress_down' && q.detail ? '（' + esc(q.detail) + '）' : '';
         body = '<div class="note">' + (QUOTA_NOTE[q.state] || '暂时读不到额度') + detail + '</div>';
       }
-      const canOpen = Boolean(q && (q.windows.length || (q.kind === 'balance' && (q.balances || []).length)));
+      const canOpen = Boolean(q && (q.windows.length || (q.kind === 'balance' && (q.balances || []).length) || (q.kind === 'usage' && q.state === 'ok')));
       return '<div class="provider' + (expanded === id ? ' open' : '') + '" role="button" aria-expanded="' + (expanded === id) + '" data-provider="' + id + '"' + (canOpen ? ' title="展开详细用量"' : '') + '><div class="providerHead"><span>' + name + '</span>' +
         '<span class="state"><span class="led' + (mine.length ? ' on' : '') + '"></span>' + text + (canOpen ? CHEVRON : '') + '</span></div>' + body + '</div>';
     }).join('');

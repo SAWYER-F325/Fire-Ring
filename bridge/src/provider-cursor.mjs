@@ -3,6 +3,13 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { DATA_DIR } from './config.mjs';
+import { windowOf } from './window.mjs';
+
+let DatabaseSync = null;
+try {
+  ({ DatabaseSync } = await import('node:sqlite'));
+} catch { /* older Node */ }
 
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const STALE_MS = 20 * 60 * 1000;
@@ -193,4 +200,95 @@ export function readCursorSessions(now = Date.now()) {
   }
 
   return [...byId.values()];
+}
+
+const cursorStorageDb = () => process.env.FIRE_RING_CURSOR_STORAGE_DB
+  || path.join(os.homedir(), 'Library', 'Application Support', 'Cursor', 'User', 'globalStorage', 'state.vscdb');
+let cursorPlanCache = { key: '', value: null };
+
+function readCursorMembership() {
+  if (!DatabaseSync) return null;
+  const dbPath = cursorStorageDb();
+  let st;
+  try {
+    st = fs.statSync(dbPath);
+  } catch {
+    return null;
+  }
+  const key = st.mtimeMs + ':' + st.size;
+  if (key === cursorPlanCache.key) return cursorPlanCache.value;
+  let db;
+  try {
+    db = new DatabaseSync(dbPath, { readOnly: true });
+    const rows = db.prepare(`SELECT key, value FROM ItemTable WHERE key IN ('cursorAuth/stripeMembershipType', 'cursorAuth/stripeSubscriptionStatus')`).all();
+    const map = Object.fromEntries(rows.map((r) => [r.key, String(r.value || '').trim()]));
+    const value = {
+      plan: map['cursorAuth/stripeMembershipType'] || null,
+      subscriptionStatus: map['cursorAuth/stripeSubscriptionStatus'] || null,
+    };
+    cursorPlanCache = { key, value };
+    return value;
+  } catch {
+    return cursorPlanCache.value;
+  } finally {
+    try { db?.close(); } catch { /* ignore */ }
+  }
+}
+
+function readCursorSnapshot(now) {
+  const file = path.join(DATA_DIR, 'cursor-quota.json');
+  let raw;
+  try {
+    raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
+  const observedAt = Number(raw.observedAt || (raw.fetched_at ? raw.fetched_at * 1000 : 0)) || 0;
+  if (!observedAt || now - observedAt > 7 * 24 * 60 * 60_000) return null;
+  const windows = [];
+  if (Array.isArray(raw.windows)) {
+    for (const w of raw.windows) {
+      if (!w || w.is_enabled === false || !Number.isFinite(w.utilization)) continue;
+      const kind = w.kind === 'monthly' ? 'monthly' : w.kind === 'five_hour' ? 'five_hour' : 'weekly';
+      if (w.slot === 'primary' || windows.length === 0) {
+        windows.push(windowOf(kind, w.utilization, w.resets_at, now));
+      }
+    }
+  } else if (raw.monthly && Number.isFinite(raw.monthly.used_percentage)) {
+    windows.push(windowOf('monthly', raw.monthly.used_percentage, raw.monthly.resets_at, now));
+  }
+  return windows.length ? { observedAt, windows, plan: raw.metadata?.['cursor.membershipType'] || raw.plan || null } : null;
+}
+
+/** Reads Cursor local membership tier, active sessions/turns, and optional local quota snapshot. */
+export function readCursorQuota(now = Date.now()) {
+  const snap = readCursorSnapshot(now);
+  const membership = readCursorMembership();
+  const sessions = readCursorSessions(now);
+  const fiveHourCutoff = now - 5 * 60 * 60_000;
+  const d = new Date(now);
+  const midnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const fiveHourSessions = sessions.filter((s) => s.updatedAt >= fiveHourCutoff).length;
+  const todaySessions = sessions.filter((s) => s.updatedAt >= midnight).length;
+  const latestAt = sessions.reduce((m, s) => Math.max(m, s.updatedAt || 0), 0);
+  const localUsage = (fiveHourSessions || todaySessions)
+    ? { fiveHour: { messages: fiveHourSessions, totalTokens: 0 }, today: { messages: todaySessions, totalTokens: 0 }, unit: 'sessions' }
+    : null;
+  const windows = snap ? snap.windows : [];
+  const plan = snap?.plan || membership?.plan || null;
+  const hasAny = windows.length > 0 || Boolean(plan) || Boolean(localUsage);
+
+  return {
+    id: 'cursor',
+    name: 'Cursor',
+    kind: windows.length ? 'windows' : 'usage',
+    state: hasAny ? 'ok' : 'unknown',
+    source: windows.length ? 'snapshot' : 'local',
+    observedAt: Math.max(snap?.observedAt || 0, latestAt) || (plan ? now : null),
+    plan,
+    subscriptionStatus: membership?.subscriptionStatus || null,
+    windows,
+    extras: [],
+    localUsage,
+  };
 }

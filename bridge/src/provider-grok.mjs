@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { windowOf } from './window.mjs';
 
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const STALE_MS = 20 * 60 * 1000;
@@ -291,4 +292,142 @@ export function readGrokSessions(now = Date.now()) {
   }
 
   return [...byId.values()];
+}
+
+let billingCache = { key: '', value: null };
+const usageFileCache = new Map();
+
+function readGrokDesktopBilling(now) {
+  const file = path.join(grokDesktopHome(), 'account_billing_cache.json');
+  let st;
+  try {
+    st = fs.statSync(file);
+  } catch {
+    billingCache = { key: '', value: null };
+    return null;
+  }
+  const key = st.mtimeMs + ':' + st.size;
+  let data;
+  if (key === billingCache.key) {
+    data = billingCache.value;
+  } else {
+    data = readJson(file);
+    billingCache = { key, value: data };
+  }
+  if (!data || data.available === false) return null;
+  const used = Number.isFinite(data.creditUsagePercent)
+    ? Number(data.creditUsagePercent)
+    : Number.isFinite(data.remainingPercent)
+      ? 100 - Number(data.remainingPercent)
+      : null;
+  if (used === null) return null;
+
+  const resetsMs = Date.parse(data.resetsAt || data.billingPeriodEnd || '') || 0;
+  const resetsSec = resetsMs ? resetsMs / 1000 : null;
+  const observedAt = Date.parse(data.fetchedAt || '') || st.mtimeMs;
+  const windows = [windowOf('billing', used, resetsSec, now)];
+  const extras = Array.isArray(data.products)
+    ? data.products
+      .filter((p) => p && p.label && Number.isFinite(p.usedPercent))
+      .map((p) => ({ label: String(p.label), ...windowOf('scoped', p.usedPercent, resetsSec, now) }))
+    : [];
+  return { observedAt, plan: data.subscriptionTier || null, windows, extras };
+}
+
+function readGrokCliUsage(now) {
+  const root = path.join(grokHome(), 'sessions');
+  const fiveHourCutoff = now - 5 * 60 * 60_000;
+  const d = new Date(now);
+  const midnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const fiveHour = { messages: 0, totalTokens: 0 };
+  const today = { messages: 0, totalTokens: 0 };
+  let latestAt = 0;
+  let latestModel = '';
+
+  let buckets = [];
+  try {
+    buckets = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+
+  for (const b of buckets) {
+    if (!b.isDirectory()) continue;
+    const bPath = path.join(root, b.name);
+    let dirs = [];
+    try {
+      dirs = fs.readdirSync(bPath, { withFileTypes: true });
+    } catch { continue; }
+    for (const dir of dirs) {
+      if (!dir.isDirectory()) continue;
+      const uFile = path.join(bPath, dir.name, 'usage.json');
+      let st;
+      try {
+        st = fs.statSync(uFile);
+        if (now - st.mtimeMs > MAX_AGE_MS) continue;
+      } catch { continue; }
+      let hit = usageFileCache.get(uFile);
+      if (!hit || hit.mtime !== st.mtimeMs || hit.size !== st.size) {
+        const raw = readJson(uFile);
+        const turns = Array.isArray(raw?.turns) ? raw.turns : [];
+        const model = String(raw?.session?.primaryModelId || '');
+        const items = turns.length
+          ? turns.map((t) => ({
+            at: Date.parse(t.endedAt || raw.updatedAt || '') || st.mtimeMs,
+            turns: 1,
+            tokens: Number(t.totalTokens) || 0,
+            model: String(t.primaryModelId || model),
+          }))
+          : [{
+            at: Date.parse(raw?.updatedAt || '') || st.mtimeMs,
+            turns: Number(raw?.session?.turnCount) || 1,
+            tokens: Number(raw?.session?.totalTokens) || 0,
+            model,
+          }];
+        hit = { mtime: st.mtimeMs, size: st.size, items };
+        usageFileCache.set(uFile, hit);
+      }
+      for (const it of hit.items) {
+        if (it.at >= fiveHourCutoff) {
+          fiveHour.messages += it.turns;
+          fiveHour.totalTokens += it.tokens;
+        }
+        if (it.at >= midnight) {
+          today.messages += it.turns;
+          today.totalTokens += it.tokens;
+        }
+        if (it.at > latestAt) {
+          latestAt = it.at;
+          if (it.model) latestModel = it.model;
+        }
+      }
+    }
+  }
+
+  if (!fiveHour.messages && !today.messages) return null;
+  return { fiveHour, today, model: latestModel || null, observedAt: latestAt };
+}
+
+/** Reads Grok Desktop billing cache (SuperGrok credit %) and Grok CLI local usage.json stats. */
+export function readGrokQuota(now = Date.now()) {
+  const billing = readGrokDesktopBilling(now);
+  const cli = readGrokCliUsage(now);
+  const windows = billing ? billing.windows : [];
+  const extras = billing ? billing.extras : [];
+  const localUsage = cli ? { fiveHour: cli.fiveHour, today: cli.today, model: cli.model } : null;
+  const observedAt = Math.max(billing?.observedAt || 0, cli?.observedAt || 0) || null;
+  const hasAny = windows.length > 0 || Boolean(localUsage);
+
+  return {
+    id: 'grok',
+    name: 'Grok',
+    kind: windows.length ? 'windows' : 'usage',
+    state: hasAny ? 'ok' : 'unknown',
+    source: windows.length ? 'desktop' : 'local',
+    observedAt,
+    plan: billing?.plan || null,
+    windows,
+    extras,
+    localUsage,
+  };
 }

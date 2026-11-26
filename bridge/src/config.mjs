@@ -54,7 +54,7 @@ const DEFAULTS = {
   providers: { claude: false, codex: false, dsh: false, antigravity: false, cursor: false, grok: false },
   // Which limits the menu-bar panel shows. Claude's desktop app gives no running
   // percentages, so it is off unless the user turns it on.
-  quota: { claude: false, codex: true, dsh: false },
+  quota: { claude: false, codex: true, dsh: false, antigravity: false, cursor: false, grok: false },
   updates: { autoCheck: true },
   onboarded: false,
   // Whether to ask about launching at login: 'ask' until the user picks
@@ -133,11 +133,10 @@ export function readConfig() {
       : { mode, url: typeof proxy.url === 'string' ? proxy.url.trim() : '' },
     updates: { autoCheck: !(raw.updates && raw.updates.autoCheck === false) },
     providers: Object.fromEntries(PROVIDER_IDS.map((id) => [id, Boolean(raw.providers && raw.providers[id] === true)])),
-    quota: {
-      claude: Boolean(raw.quota && raw.quota.claude === true),
-      codex: !(raw.quota && raw.quota.codex === false),
-      dsh: Boolean(raw.quota && raw.quota.dsh === true),
-    },
+    quota: Object.fromEntries(PROVIDER_IDS.map((id) => [
+      id,
+      id === 'codex' ? !(raw.quota && raw.quota.codex === false) : Boolean(raw.quota && raw.quota[id] === true),
+    ])),
     onboarded: raw.onboarded === true,
     loginPrompt: raw.loginPrompt === 'never' ? 'never' : 'ask',
     theme: ['dark', 'light', 'system'].includes(raw.theme) ? raw.theme : 'dark',

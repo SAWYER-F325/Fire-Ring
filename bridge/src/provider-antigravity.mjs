@@ -4,6 +4,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { DATA_DIR } from './config.mjs';
+import { windowOf } from './window.mjs';
 
 let DatabaseSync = null;
 try {
@@ -152,4 +154,125 @@ export function readAntigravitySessions(now = Date.now()) {
     });
   }
   return out;
+}
+
+const USAGE_CACHE = new Map();
+const FIVE_HOUR_MS = 5 * 60 * 60_000;
+const DAY_MS = 24 * 60 * 60_000;
+const SNAPSHOT_MAX_AGE_MS = 24 * 60 * 60_000;
+
+function readAntigravitySnapshot(now) {
+  const file = path.join(DATA_DIR, 'antigravity-quota.json');
+  let raw;
+  try {
+    raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
+  const observedAt = Number(raw.observedAt || (raw.fetched_at ? raw.fetched_at * 1000 : 0)) || 0;
+  if (!observedAt || now - observedAt > SNAPSHOT_MAX_AGE_MS) return null;
+  const windows = [];
+  if (raw.five_hour && Number.isFinite(raw.five_hour.used_percentage)) {
+    windows.push(windowOf('five_hour', raw.five_hour.used_percentage, raw.five_hour.resets_at, now));
+  }
+  if (raw.seven_day && Number.isFinite(raw.seven_day.used_percentage)) {
+    windows.push(windowOf('weekly', raw.seven_day.used_percentage, raw.seven_day.resets_at, now));
+  }
+  const plan = raw.plan || raw.metadata?.['antigravity.plan'] || null;
+  return windows.length ? { observedAt, windows, plan } : null;
+}
+
+function parseTranscriptUsage(file) {
+  const entries = [];
+  let text;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch {
+    return entries;
+  }
+  for (const line of text.split('\n')) {
+    if (!line.includes('PLANNER_RESPONSE') || !line.includes('output_tokens')) continue;
+    try {
+      const rec = JSON.parse(line);
+      if (rec.type !== 'PLANNER_RESPONSE') continue;
+      const at = Date.parse(rec.created_at) || 0;
+      if (!at) continue;
+      const input = Number(rec.input_tokens) || 0;
+      const cacheRead = Number(rec.cache_read_tokens) || 0;
+      const output = Number(rec.output_tokens) || 0;
+      entries.push({ at, model: typeof rec.model === 'string' ? rec.model : '', total: input + cacheRead + output, active: input + output });
+    } catch { /* skip malformed */ }
+  }
+  return entries;
+}
+
+/** Reads Antigravity real-time local token usage and optional local quota snapshot. */
+export function readAntigravityQuota(now = Date.now()) {
+  const snap = readAntigravitySnapshot(now);
+  const brainDir = path.join(agyHome(), 'brain');
+  const fiveHourCutoff = now - FIVE_HOUR_MS;
+  const d = new Date(now);
+  const midnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const fiveHour = { messages: 0, totalTokens: 0, activeTokens: 0 };
+  const today = { messages: 0, totalTokens: 0, activeTokens: 0 };
+  let latestAt = 0;
+  let latestModel = '';
+
+  let dirs = [];
+  try {
+    dirs = fs.readdirSync(brainDir, { withFileTypes: true });
+  } catch { /* ignore */ }
+
+  const files = [];
+  for (const e of dirs) {
+    if (!e.isDirectory()) continue;
+    const f = path.join(brainDir, e.name, '.system_generated', 'logs', 'transcript.jsonl');
+    try {
+      const st = fs.statSync(f);
+      if (now - st.mtimeMs <= DAY_MS) files.push({ file: f, mtime: st.mtimeMs, size: st.size });
+    } catch { /* ignore */ }
+  }
+  files.sort((a, b) => b.mtime - a.mtime);
+
+  for (const { file, mtime, size } of files.slice(0, 20)) {
+    let hit = USAGE_CACHE.get(file);
+    if (!hit || hit.mtime !== mtime || hit.size !== size) {
+      hit = { mtime, size, entries: parseTranscriptUsage(file) };
+      USAGE_CACHE.set(file, hit);
+    }
+    for (const item of hit.entries) {
+      if (item.at >= fiveHourCutoff) {
+        fiveHour.messages += 1;
+        fiveHour.totalTokens += item.total;
+        fiveHour.activeTokens += item.active;
+      }
+      if (item.at >= midnight) {
+        today.messages += 1;
+        today.totalTokens += item.total;
+        today.activeTokens += item.active;
+      }
+      if (item.at > latestAt) {
+        latestAt = item.at;
+        if (item.model) latestModel = item.model;
+      }
+    }
+  }
+
+  const localUsage = (fiveHour.messages || today.messages) ? { fiveHour, today, model: latestModel || null } : null;
+  const windows = snap ? snap.windows : [];
+  const observedAt = Math.max(snap?.observedAt || 0, latestAt) || null;
+  const hasAny = windows.length > 0 || Boolean(localUsage);
+
+  return {
+    id: 'antigravity',
+    name: 'Antigravity',
+    kind: windows.length ? 'windows' : 'usage',
+    state: hasAny ? 'ok' : 'unknown',
+    source: windows.length ? 'snapshot' : 'local',
+    observedAt,
+    plan: snap?.plan || null,
+    windows,
+    extras: [],
+    localUsage,
+  };
 }

@@ -589,7 +589,7 @@ export function startStateServer(port = STATE_PORT) {
           patch.proxy = { mode, url: proxyUrl };
         }
         if (param('autoCheck') !== null) patch.updates = { autoCheck: param('autoCheck') !== '0' };
-        for (const id of ['claude', 'codex', 'dsh']) {
+        for (const id of PROVIDER_IDS) {
           const value = param('quota_' + id);
           if (value !== null) patch.quota = { ...(patch.quota || {}), [id]: value !== '0' };
         }

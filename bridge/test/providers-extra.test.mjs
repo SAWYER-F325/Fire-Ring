@@ -24,9 +24,9 @@ fs.mkdirSync(grokRoot, { recursive: true });
 fs.mkdirSync(grokDesktopRoot, { recursive: true });
 fs.mkdirSync(dataDir, { recursive: true });
 
-const { readAntigravitySessions } = await import('../src/provider-antigravity.mjs');
-const { readCursorSessions, recordCursorHook, clearCursorHooksForTest } = await import('../src/provider-cursor.mjs');
-const { readGrokSessions, recordGrokHook, clearGrokHooksForTest } = await import('../src/provider-grok.mjs');
+const { readAntigravitySessions, readAntigravityQuota } = await import('../src/provider-antigravity.mjs');
+const { readCursorSessions, readCursorQuota, recordCursorHook, clearCursorHooksForTest } = await import('../src/provider-cursor.mjs');
+const { readGrokSessions, readGrokQuota, recordGrokHook, clearGrokHooksForTest } = await import('../src/provider-grok.mjs');
 const {
   cursorHookState, connectCursorHooks, disconnectCursorHooks,
   grokHookState, connectGrokHooks, disconnectGrokHooks,
@@ -163,4 +163,54 @@ test('Grok reads CLI updates.jsonl, deduplicates with Grok Desktop, and handles 
   assert.equal(fs.existsSync(otherHook), true);
   assert.equal(disconnectGrokHooks(), 'off');
   assert.equal(fs.existsSync(otherHook), true);
+});
+
+test('Antigravity, Cursor, and Grok quota readers return local real-time usage and billing windows', () => {
+  const now = Date.now();
+  // Antigravity transcript token usage
+  const agyLog = path.join(agyRoot, 'brain', 'conv-run', '.system_generated', 'logs');
+  fs.mkdirSync(agyLog, { recursive: true });
+  fs.writeFileSync(path.join(agyLog, 'transcript.jsonl'), JSON.stringify({
+    type: 'PLANNER_RESPONSE', created_at: new Date(now - 60_000).toISOString(),
+    model: 'gemini-4-neon', input_tokens: 1200, cache_read_tokens: 8000, output_tokens: 600,
+  }) + '\n');
+  const aq = readAntigravityQuota(now);
+  assert.equal(aq.state, 'ok');
+  assert.equal(aq.localUsage.fiveHour.messages, 1);
+  assert.equal(aq.localUsage.fiveHour.totalTokens, 9800);
+
+  // Cursor local membership from state.vscdb
+  const cursorDbPath = path.join(home, 'cursor-state.vscdb');
+  process.env.FIRE_RING_CURSOR_STORAGE_DB = cursorDbPath;
+  const cdb = new DatabaseSync(cursorDbPath);
+  cdb.exec('CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT);');
+  cdb.prepare('INSERT INTO ItemTable VALUES (?, ?)').run('cursorAuth/stripeMembershipType', 'pro');
+  cdb.prepare('INSERT INTO ItemTable VALUES (?, ?)').run('cursorAuth/stripeSubscriptionStatus', 'active');
+  cdb.close();
+  const cq = readCursorQuota(now);
+  assert.equal(cq.state, 'ok');
+  assert.equal(cq.plan, 'pro');
+
+  // Grok desktop account_billing_cache.json + CLI usage.json
+  fs.writeFileSync(path.join(grokDesktopRoot, 'account_billing_cache.json'), JSON.stringify({
+    available: true,
+    subscriptionTier: 'SuperGrok',
+    creditUsagePercent: 12,
+    remainingPercent: 88,
+    resetsAt: new Date(now + 3 * 86_400_000).toISOString(),
+    products: [{ productId: 2, label: 'Grok Build', usedPercent: 12 }],
+    fetchedAt: new Date(now - 60_000).toISOString(),
+  }));
+  const gUsageDir = path.join(grokRoot, 'sessions', '%2Ftmp%2Fproj', 'grok-cli-1');
+  fs.writeFileSync(path.join(gUsageDir, 'usage.json'), JSON.stringify({
+    updatedAt: new Date(now - 30_000).toISOString(),
+    session: { primaryModelId: 'grok-4.7-build', turnCount: 2, totalTokens: 54000 },
+    turns: [{ endedAt: new Date(now - 30_000).toISOString(), totalTokens: 54000, primaryModelId: 'grok-4.7-build' }],
+  }));
+  const gq = readGrokQuota(now);
+  assert.equal(gq.state, 'ok');
+  assert.equal(gq.plan, 'SuperGrok');
+  assert.equal(gq.windows[0].leftPercent, 88);
+  assert.equal(gq.extras[0].label, 'Grok Build');
+  assert.equal(gq.localUsage.fiveHour.totalTokens, 54000);
 });
