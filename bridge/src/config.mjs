@@ -55,6 +55,8 @@ const DEFAULTS = {
   // Which limits the menu-bar panel shows. Claude's desktop app gives no running
   // percentages, so it is off unless the user turns it on.
   quota: { claude: false, codex: true, dsh: false },
+  // Which limits are shown directly next to the menu-bar flame icon (quiet by default).
+  menuBarQuota: { claude: false, codex: false, dsh: false },
   updates: { autoCheck: true },
   onboarded: false,
   // Whether to ask about launching at login: 'ask' until the user picks
@@ -133,11 +135,14 @@ export function readConfig() {
       : { mode, url: typeof proxy.url === 'string' ? proxy.url.trim() : '' },
     updates: { autoCheck: !(raw.updates && raw.updates.autoCheck === false) },
     providers: Object.fromEntries(PROVIDER_IDS.map((id) => [id, Boolean(raw.providers && raw.providers[id] === true)])),
-    quota: {
-      claude: Boolean(raw.quota && raw.quota.claude === true),
-      codex: !(raw.quota && raw.quota.codex === false),
-      dsh: Boolean(raw.quota && raw.quota.dsh === true),
-    },
+    quota: Object.fromEntries(PROVIDER_IDS.map((id) => [
+      id,
+      id === 'codex' ? !(raw.quota && raw.quota.codex === false) : Boolean(raw.quota && raw.quota[id] === true),
+    ])),
+    menuBarQuota: Object.fromEntries(PROVIDER_IDS.map((id) => [
+      id,
+      Boolean(raw.menuBarQuota && raw.menuBarQuota[id] === true),
+    ])),
     onboarded: raw.onboarded === true,
     loginPrompt: raw.loginPrompt === 'never' ? 'never' : 'ask',
     theme: ['dark', 'light', 'system'].includes(raw.theme) ? raw.theme : 'dark',
@@ -162,6 +167,7 @@ export function writeConfig(patch) {
     updates: { ...current.updates, ...(patch.updates || {}) },
     providers: { ...current.providers, ...(patch.providers || {}) },
     quota: { ...current.quota, ...(patch.quota || {}) },
+    menuBarQuota: { ...current.menuBarQuota, ...(patch.menuBarQuota || {}) },
   };
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(next, null, 2) + '\n');
@@ -171,7 +177,12 @@ export function writeConfig(patch) {
 
 /** 「重置设置」：外观、菜单栏额度和提醒恢复默认；连接、网络和引导状态不动。 */
 export function resetPreferences() {
-  return writeConfig({ theme: DEFAULTS.theme, quota: { ...DEFAULTS.quota }, alerts: normalizeAlerts({}) });
+  return writeConfig({
+    theme: DEFAULTS.theme,
+    quota: { ...DEFAULTS.quota },
+    menuBarQuota: Object.fromEntries(PROVIDER_IDS.map((id) => [id, false])),
+    alerts: normalizeAlerts({}),
+  });
 }
 
 /** Forget the cached copy, e.g. after another process changed the file. */

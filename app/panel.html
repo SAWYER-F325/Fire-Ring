@@ -150,6 +150,34 @@
   section:last-child { padding-bottom: 2px; }
   section.listWrap { border-top: 0; padding: 0 0 8px; }
   .head { font-size: 11px; line-height: 16px; color: var(--ink-2); margin-bottom: 6px; }
+  .headRow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .headRow .head { margin-bottom: 0; }
+  .headAct {
+    border: 0; background: none; padding: 2px 6px; margin-right: -6px; border-radius: 6px;
+    font: inherit; font-size: 11px; line-height: 16px; color: var(--ink-2); cursor: pointer;
+    transition: background-color 200ms var(--liquid), color 200ms var(--liquid);
+  }
+  .headAct:hover { background: rgba(var(--tint),.08); color: var(--ink); }
+  .headAct[aria-expanded="true"] { color: var(--accent); }
+  .quotaPicker {
+    margin-bottom: 8px; padding: 8px 10px; border-radius: 12px;
+    background: var(--tile); box-shadow: var(--tile-shadow), inset 0 0 0 .5px var(--line);
+  }
+  .quotaPicker[hidden] { display: none; }
+  .pickerHead { display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: var(--ink-3); margin-bottom: 6px; }
+  .pickerRow { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 28px; }
+  .pickerRow + .pickerRow { border-top: 1px solid var(--line); }
+  .pickerName { font-size: 12px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pickerChips { display: flex; gap: 5px; flex: 0 0 auto; }
+  .qChip {
+    display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border: 0; border-radius: 7px;
+    font: inherit; font-size: 11px; cursor: pointer; background: rgba(var(--tint),.07); color: var(--ink-3);
+    transition: background-color 200ms var(--liquid), color 200ms var(--liquid);
+  }
+  .qChip i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .45; }
+  .qChip[aria-pressed="true"] i { opacity: 1; }
+  .qChip.onPanel[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+  .qChip.onBar[aria-pressed="true"] { background: rgba(255,138,43,.18); color: var(--ember); }
 
   /* Grows with its rows. The app moves the glass on the same curve. */
   #items { background: var(--tray); border-radius: 14px; height: 64px; overflow-y: auto; margin: 0 -8px; padding: 0 8px; transition: height 420ms var(--spring); }
@@ -336,7 +364,11 @@
     <div id="items" role="tabpanel"></div>
   </section>
   <section class="rise" id="quotaSection">
-    <div class="head">额度</div>
+    <div class="headRow">
+      <div class="head">额度</div>
+      <button class="headAct" id="customizeQuota" type="button" aria-expanded="false">自定义</button>
+    </div>
+    <div class="quotaPicker" id="quotaPicker" hidden></div>
     <div id="quota"></div>
   </section>
   <section class="rise">
@@ -692,38 +724,107 @@
   // Which tools are connected, as the bridge last said; null until it has.
   let providers = null;
   let quotaShown = null;   // which limits the user chose to see (Settings → General)
+  let menuBarQuota = null; // which limits appear beside the top-right flame icon
+  let customizing = false;
+  let lastPicker = null;
   const connected = (id) => !providers || providers[id] === true;
   const quotaOn = (id) => connected(id) && (quotaShown ? quotaShown[id] === true : id === 'codex');
+  const mbQuotaOn = (id) => connected(id) && Boolean(menuBarQuota && menuBarQuota[id] === true);
   const connectedCount = () => (providers ? Object.values(providers).filter(Boolean).length : 1);
 
+  function renderQuotaPicker() {
+    const picker = $('quotaPicker');
+    const btn = $('customizeQuota');
+    btn.textContent = customizing ? '完成' : '自定义';
+    btn.setAttribute('aria-expanded', String(customizing));
+    if (picker.hidden !== !customizing) picker.hidden = !customizing;
+    if (!customizing) return;
+    const avail = QUOTA_SOURCES.filter(([id]) => connected(id));
+    const html = '<div class="pickerHead"><span>选择要展示的工具额度</span><span>面板 / 顶栏</span></div>' +
+      avail.map(([id, name]) =>
+        '<div class="pickerRow"><span class="pickerName">' + esc(name) + '</span><div class="pickerChips">' +
+        '<button class="qChip onPanel" type="button" data-pick-panel="' + id + '" aria-pressed="' + quotaOn(id) + '"><i></i>面板</button>' +
+        '<button class="qChip onBar" type="button" data-pick-bar="' + id + '" aria-pressed="' + mbQuotaOn(id) + '"><i></i>顶栏</button>' +
+        '</div></div>'
+      ).join('');
+    if (html !== lastPicker) { lastPicker = html; picker.innerHTML = html; }
+  }
+
   function renderQuota() {
-    const shown = QUOTA_SOURCES.filter(([id]) => quotaOn(id));
+    const avail = QUOTA_SOURCES.filter(([id]) => connected(id));
+    const shown = avail.filter(([id]) => quotaOn(id));
     const section = $('quotaSection');
-    if (section.hidden !== !shown.length) section.hidden = !shown.length;
-    const html = shown.map(([id, name]) => {
-      const mine = sessions.filter((s) => s.provider === id);
-      const running = mine.filter((s) => s.status === 'running').length;
-      const text = running ? running + ' 在跑' : mine.length ? mine.length + ' 条会话' : '未发现';
-      const q = quota.find((p) => p.id === id);
-      let body = '';
-      if (q && q.kind === 'balance' && (q.balances || []).length) {
-        body = balanceHtml(q);
-        if (expanded === id) body += balanceDetailsHtml(q);
-      } else if (q && q.windows.length) {
-        body = q.windows.map(meterHtml).join('');
-        if (q.stale) body += '<div class="note">' + (STALE_NOTE[q.stale] || '暂时沿用') + ' ' + ageText(q.observedAt) + '的额度，会自动重试</div>';
-        else if (id === 'codex' && q.observedAt && Date.now() - q.observedAt > STALE_MS) body += '<div class="note">额度来自 ' + ageText(q.observedAt) + '的最后一次使用</div>';
-        if (expanded === id) body += detailsHtml(q);
-      } else if (q) {
-        const detail = q.state === 'egress_down' && q.detail ? '（' + esc(q.detail) + '）' : '';
-        body = '<div class="note">' + (QUOTA_NOTE[q.state] || '暂时读不到额度') + detail + '</div>';
-      }
-      const canOpen = Boolean(q && (q.windows.length || (q.kind === 'balance' && (q.balances || []).length)));
-      return '<div class="provider' + (expanded === id ? ' open' : '') + '" role="button" aria-expanded="' + (expanded === id) + '" data-provider="' + id + '"' + (canOpen ? ' title="展开详细用量"' : '') + '><div class="providerHead"><span>' + name + '</span>' +
-        '<span class="state"><span class="led' + (mine.length ? ' on' : '') + '"></span>' + text + (canOpen ? CHEVRON : '') + '</span></div>' + body + '</div>';
-    }).join('');
+    const hideSection = avail.length === 0;
+    if (section.hidden !== hideSection) section.hidden = hideSection;
+    renderQuotaPicker();
+    const html = shown.length
+      ? shown.map(([id, name]) => {
+        const mine = sessions.filter((s) => s.provider === id);
+        const running = mine.filter((s) => s.status === 'running').length;
+        const text = running ? running + ' 在跑' : mine.length ? mine.length + ' 条会话' : '未发现';
+        const q = quota.find((p) => p.id === id);
+        let body = '';
+        if (q && q.kind === 'balance' && (q.balances || []).length) {
+          body = balanceHtml(q);
+          if (expanded === id) body += balanceDetailsHtml(q);
+        } else if (q && q.windows.length) {
+          body = q.windows.map(meterHtml).join('');
+          if (q.stale) body += '<div class="note">' + (STALE_NOTE[q.stale] || '暂时沿用') + ' ' + ageText(q.observedAt) + '的额度，会自动重试</div>';
+          else if (id === 'codex' && q.observedAt && Date.now() - q.observedAt > STALE_MS) body += '<div class="note">额度来自 ' + ageText(q.observedAt) + '的最后一次使用</div>';
+          if (expanded === id) body += detailsHtml(q);
+        } else if (q) {
+          const detail = q.state === 'egress_down' && q.detail ? '（' + esc(q.detail) + '）' : '';
+          body = '<div class="note">' + (QUOTA_NOTE[q.state] || '暂时读不到额度') + detail + '</div>';
+        }
+        const canOpen = Boolean(q && (q.windows.length || (q.kind === 'balance' && (q.balances || []).length)));
+        return '<div class="provider' + (expanded === id ? ' open' : '') + '" role="button" aria-expanded="' + (expanded === id) + '" data-provider="' + id + '"' + (canOpen ? ' title="展开详细用量"' : '') + '><div class="providerHead"><span>' + name + '</span>' +
+          '<span class="state"><span class="led' + (mine.length ? ' on' : '') + '"></span>' + text + (canOpen ? CHEVRON : '') + '</span></div>' + body + '</div>';
+      }).join('')
+      : (customizing ? '' : '<div class="note">当前未在面板展示额度，点右上角「自定义」勾选</div>');
     if (html !== lastQuota) { lastQuota = html; $('quota').innerHTML = html; }
   }
+
+  $('customizeQuota').addEventListener('click', () => {
+    customizing = !customizing;
+    lastPicker = null;
+    render();
+  });
+
+  $('quotaPicker').addEventListener('click', async (event) => {
+    const panelBtn = event.target.closest('[data-pick-panel]');
+    const barBtn = event.target.closest('[data-pick-bar]');
+    if (!panelBtn && !barBtn) return;
+    if (panelBtn) {
+      const id = panelBtn.dataset.pickPanel;
+      const next = !quotaOn(id);
+      quotaShown = { ...(quotaShown || {}), [id]: next };
+      lastPicker = null;
+      render();
+      try {
+        const res = await api('/config?quota_' + id + '=' + (next ? 1 : 0), { method: 'POST' });
+        if (!res.ok) throw new Error(String(res.status));
+        if (next) loadQuota();
+      } catch {
+        quotaShown = { ...(quotaShown || {}), [id]: !next };
+        lastPicker = null;
+        render();
+      }
+      return;
+    }
+    const id = barBtn.dataset.pickBar;
+    const next = !mbQuotaOn(id);
+    menuBarQuota = { ...(menuBarQuota || {}), [id]: next };
+    lastPicker = null;
+    render();
+    try {
+      const res = await api('/config?menuBarQuota_' + id + '=' + (next ? 1 : 0), { method: 'POST' });
+      if (!res.ok) throw new Error(String(res.status));
+    } catch {
+      menuBarQuota = { ...(menuBarQuota || {}), [id]: !next };
+      lastPicker = null;
+      render();
+    }
+  });
 
   // Clicking a platform opens its details in place; clicking again folds them.
   $('quota').addEventListener('click', (event) => {
@@ -860,6 +961,8 @@
     if (max > 0) maxHeight = max;
     $('root').scrollTop = 0;
     expanded = null;
+    customizing = false;
+    lastPicker = null;
     window.__resync();
     loadQuota();
     tab = mostUrgent();
@@ -916,6 +1019,7 @@
         sessions = Array.isArray(data.sessions) ? data.sessions : [];
         if (data.providers) providers = data.providers;
         if (data.quotaShown) quotaShown = data.quotaShown;
+        if (data.menuBarQuota) menuBarQuota = data.menuBarQuota;
         document.documentElement.dataset.theme = data.theme || 'dark';
         // Completions cleared elsewhere burn away here too rather than vanish.
         const gone = finishedRows().filter((row) => was.get(row.dataset.id) === 'finished'

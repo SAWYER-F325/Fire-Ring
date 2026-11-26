@@ -363,6 +363,8 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
         item.autosaveName = Self.statusItemName
         if let button = item.button {
             button.image = Self.flameIcon()
+            button.imagePosition = .imageOnly
+            button.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
             button.toolTip = "Fire Ring"
             button.action = #selector(toggleSettings)
             button.target = self
@@ -380,6 +382,30 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
 
     private static let statusItemName = "FireFlame"
     private static let initialStatusItemOffset = 385.0
+    private static let statusQuotaTools: [(id: String, name: String)] = [
+        ("claude", "Claude"),
+        ("codex", "Codex"),
+        ("dsh", "DeepSeek"),
+        ("antigravity", "Antigravity"),
+        ("cursor", "Cursor"),
+        ("grok", "Grok"),
+    ]
+
+    /// Updates the live quota readout rendered directly beside the menu-bar flame icon.
+    private func updateStatusBarText(_ text: String) {
+        guard let button = statusItem?.button else { return }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            button.title = ""
+            button.imagePosition = .imageOnly
+            button.toolTip = "Fire Ring"
+            return
+        }
+        button.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
+        button.title = " " + trimmed
+        button.imagePosition = .imageLeft
+        button.toolTip = "Fire Ring — " + trimmed
+    }
 
     /// One flame curve: control point, control point, end point.
     private typealias FlameCurve = (CGFloat, CGFloat, CGFloat, CGFloat, CGFloat, CGFloat)
@@ -488,7 +514,38 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
             menu.addItem(.separator())
         }
 
-        let alerts = FireRingPaths.readConfig()["alerts"] as? [String: Any]
+        let cfg = FireRingPaths.readConfig()
+        let providers = cfg["providers"] as? [String: Bool] ?? [:]
+        let mbQuota = cfg["menuBarQuota"] as? [String: Bool] ?? [:]
+
+        let quotaMenuItem = NSMenuItem(title: "顶栏显示额度", action: nil, keyEquivalent: "")
+        let quotaSub = NSMenu()
+        quotaSub.autoenablesItems = false
+        let connected = Self.statusQuotaTools.filter { providers[$0.id] == true }
+        if connected.isEmpty {
+            let none = NSMenuItem(title: "还没有连接任何工具", action: nil, keyEquivalent: "")
+            none.isEnabled = false
+            quotaSub.addItem(none)
+        } else {
+            var anyOn = false
+            for tool in connected {
+                let on = mbQuota[tool.id] == true
+                if on { anyOn = true }
+                let row = menuItem(tool.name, #selector(toggleMenuBarQuota(_:)))
+                row.representedObject = tool.id
+                row.state = on ? .on : .off
+                quotaSub.addItem(row)
+            }
+            if anyOn {
+                quotaSub.addItem(.separator())
+                quotaSub.addItem(menuItem("全部隐藏", #selector(clearMenuBarQuota)))
+            }
+        }
+        quotaMenuItem.submenu = quotaSub
+        menu.addItem(quotaMenuItem)
+        menu.addItem(.separator())
+
+        let alerts = cfg["alerts"] as? [String: Any]
         let pausedUntil = (alerts?["pausedUntil"] as? NSNumber)?.doubleValue ?? 0
         if pausedUntil > Date().timeIntervalSince1970 * 1000 {
             let until = Date(timeIntervalSince1970: pausedUntil / 1000)
@@ -530,6 +587,23 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
         request.httpMethod = "POST"
         if let json { request.httpBody = try? JSONSerialization.data(withJSONObject: json) }
         Self.localSession.dataTask(with: request).resume()
+    }
+
+    @objc private func toggleMenuBarQuota(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        let next = sender.state != .on
+        postBridge("/config?menuBarQuota_\(id)=\(next ? 1 : 0)")
+    }
+
+    @objc private func clearMenuBarQuota() {
+        let cfg = FireRingPaths.readConfig()
+        let mbQuota = cfg["menuBarQuota"] as? [String: Bool] ?? [:]
+        let query = Self.statusQuotaTools
+            .filter { mbQuota[$0.id] == true }
+            .map { "menuBarQuota_\($0.id)=0" }
+            .joined(separator: "&")
+        guard !query.isEmpty else { return }
+        postBridge("/config?" + query)
     }
 
     @objc private func pauseAlertsHour() {
@@ -617,6 +691,8 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
             preferences.show(section: body["section"] as? String)
         case "panelSize":
             if let height = (body["height"] as? NSNumber)?.doubleValue { settings.setContentHeight(CGFloat(height)) }
+        case "statusBarText":
+            updateStatusBarText(body["text"] as? String ?? "")
         case "openURL":
             if let text = body["url"] as? String, let url = URL(string: text) { NSWorkspace.shared.open(url) }
         case "openApp":
