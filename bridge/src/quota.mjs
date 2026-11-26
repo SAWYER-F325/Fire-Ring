@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { latestCodexFiles } from './providers.mjs';
+import { readClaudeDesktopIdbQuota } from './claude-desktop-idb.mjs';
 import { windowOf } from './window.mjs';
 import { readConfig } from './config.mjs';
 import { STATUSLINE_FILE } from './statusline.mjs';
@@ -370,15 +371,44 @@ function mergeWindows(primary, secondary, usedUp, now) {
 /**
  * Claude's limits, read strictly on this Mac:
  * 1) Claude Code status line (`claude-statusline.json`, exact percentages + reset times)
- * 2) Claude Desktop local history (`plan-usage-history.json`, official percentages + trend)
- * 3) Local conversation refusal notes & token activity.
+ * 2) Claude Desktop live local IndexedDB verdicts (`messageLimits`, real-time % + reset time)
+ * 3) Claude Desktop local history (`plan-usage-history.json`, periodic percentages + trend)
+ * 4) Local conversation refusal notes & token activity.
  * Fire Ring never borrows Claude sign-in credentials or queries Anthropic over the network.
  */
 export function readClaudeQuota(now = Date.now()) {
   const local = statusLineQuota(now);
-  const desktop = desktopPlanQuota(now);
+  const desktopIdb = readClaudeDesktopIdbQuota(now);
+  const desktopHist = desktopPlanQuota(now);
   const usedUp = usedUpClaudeLimits(now);
   const localUsage = localClaudeUsage(now);
+
+  let desktop = null;
+  if (desktopIdb && desktopHist) {
+    const idbNewer = desktopIdb.observedAt >= desktopHist.observedAt;
+    const windows = idbNewer
+      ? mergeWindows(desktopIdb.windows, desktopHist.windows, null, now)
+      : mergeWindows(desktopHist.windows, desktopIdb.windows, null, now);
+    const week = windows.find((w) => w.kind === 'weekly');
+    let trend = desktopHist.trend || null;
+    if (trend && week && Number.isFinite(trend.weeklyPerHour) && trend.weeklyPerHour > 0) {
+      trend = {
+        weeklyPerHour: trend.weeklyPerHour,
+        estimatedHoursLeft: week.leftPercent > 0 ? Math.round((week.leftPercent / trend.weeklyPerHour) * 10) / 10 : 0,
+      };
+    }
+    desktop = {
+      state: 'ok',
+      source: 'desktop',
+      observedAt: Math.max(desktopIdb.observedAt, desktopHist.observedAt),
+      windows,
+      extras: desktopIdb.extras || [],
+      extraUsage: desktopHist.extraUsage || null,
+      trend,
+    };
+  } else {
+    desktop = desktopIdb || desktopHist;
+  }
 
   if (local && desktop) {
     // Prefer whichever source observed usage more recently (with 60s hysteresis in favour of statusline).
@@ -393,7 +423,7 @@ export function readClaudeQuota(now = Date.now()) {
       source: desktopNewer ? 'merged' : 'statusline',
       observedAt: Math.max(local.observedAt, desktop.observedAt),
       windows,
-      extras: [],
+      extras: desktop.extras || [],
       extraUsage: desktop.extraUsage || null,
       trend: desktop.trend || null,
       localUsage,

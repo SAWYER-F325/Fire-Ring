@@ -740,7 +740,7 @@
       } else if (q && q.windows.length) {
         body = q.windows.map(meterHtml).join('');
         if (q.stale) body += '<div class="note">' + (STALE_NOTE[q.stale] || '暂时沿用') + ' ' + ageText(q.observedAt) + '的额度，会自动重试</div>';
-        else if (id === 'codex' && q.observedAt && Date.now() - q.observedAt > STALE_MS) body += '<div class="note">额度来自 ' + ageText(q.observedAt) + '的最后一次使用</div>';
+        else if ((id === 'codex' || id === 'claude') && q.observedAt && Date.now() - q.observedAt > STALE_MS) body += '<div class="note">额度来自 ' + ageText(q.observedAt) + '的最后一次使用</div>';
         if (expanded === id) body += detailsHtml(q);
       } else if (q) {
         const detail = q.state === 'egress_down' && q.detail ? '（' + esc(q.detail) + '）' : '';
