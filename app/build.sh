@@ -4,7 +4,8 @@
 #
 #   app/build.sh                    build for this Mac's chip
 #   ARCH=x86_64 NODE_BIN=/path/to/x64/node app/build.sh
-#   FIRE_RING_REPO=owner/name app/build.sh   where updates are looked up
+#   FIRE_RING_REPO=owner/name app/build.sh   where updates are looked up (use "none" to disable)
+#   SIGN_IDENTITY="Developer ID Application: ..." app/build.sh   custom codesign identity (default: ad-hoc "-")
 #   FIRE_RING_LOCAL_LOCK=1 app/build.sh       载入本机自己的网络锁 app/local/lock.sh
 #                                            （不在开源仓库里，没有就停止打包）。
 #                                            普通构建不带锁，每位用户在「设置 → 网络」里自己选线路。
@@ -25,9 +26,11 @@ fail() { echo "✗ $*" >&2; exit 1; }
 
 case "$ARCH" in arm64|x86_64) ;; *) fail "不支持的芯片架构：$ARCH" ;; esac
 
-# Where "检查更新" looks: FIRE_RING_REPO, else this checkout's GitHub remote.
+# Where "检查更新" looks: FIRE_RING_REPO ("none" disables it), else this checkout's GitHub remote.
 REPO=${FIRE_RING_REPO:-}
-if [ -z "$REPO" ] && git -C "$ROOT" rev-parse >/dev/null 2>&1; then
+if [ "$REPO" = "none" ]; then
+  REPO=""
+elif [ -z "$REPO" ] && git -C "$ROOT" rev-parse >/dev/null 2>&1; then
   REMOTE=$(git -C "$ROOT" remote get-url origin 2>/dev/null || true)
   REPO=$(printf '%s' "$REMOTE" | sed -nE 's#^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)([^/]+/[^/]+)$#\2#p' | sed -E 's/\.git$//')
 fi
@@ -87,7 +90,19 @@ if [ "${FIRE_RING_LOCAL_LOCK:-}" = "1" ]; then
   [ -r "$APP_DIR/local/lock.sh" ] || { echo "✗ 要求加网络锁，但没有 app/local/lock.sh，停止打包" >&2; exit 1; }
   . "$APP_DIR/local/lock.sh"
 else
-  cp "$NODE" "$RES/runtime/node"
+  if otool -L "$NODE" 2>/dev/null | grep -q '@rpath/libnode'; then
+    # Homebrew Node dynamically links libnode and other brew dylibs; copying the
+    # binary alone breaks at launch with "Library not loaded: @rpath/libnode".
+    # For local builds, emit a lightweight launcher; distributable builds should
+    # pass a standalone official Node via NODE_BIN.
+    NODE_EXEC=${NODE_BIN:-$(command -v node)}
+    cat > "$RES/runtime/node" <<EOF
+#!/bin/sh
+exec "$NODE_EXEC" "\$@"
+EOF
+  else
+    cp "$NODE" "$RES/runtime/node"
+  fi
   chmod 755 "$RES/runtime/node"
   LOCK_NOTE="网络由用户自行设置"
 fi
@@ -100,11 +115,11 @@ cp "$ROOT/LICENSES.md" "$RES/LICENSES.md" 2>/dev/null || true
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 xattr -cr "$APP"
 
-# An ad-hoc signature: enough for macOS to run it on this Mac and keep its
-# settings; people downloading it confirm the first open once.
-codesign --force --sign - --identifier dev.firering.app "$APP" >/dev/null
+# Ad-hoc signature by default; override with SIGN_IDENTITY to sign with a local certificate.
+SIGN_ID=${SIGN_IDENTITY:--}
+codesign --force --sign "$SIGN_ID" --identifier dev.firering.app "$APP" >/dev/null
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 [ -x "$LSREGISTER" ] && "$LSREGISTER" -f "$APP" >/dev/null 2>&1 || true
 
 echo "✓ $APP"
-echo "  版本 $VERSION（$BUILD_NUMBER） · $ARCH · Node ${NODE_VERSION:-?} · SDK $(basename "$built") · 更新仓库 ${REPO:-未设置} · $LOCK_NOTE"
+echo "  版本 ${VERSION}（${BUILD_NUMBER}） · ${ARCH} · Node ${NODE_VERSION:-?} · SDK $(basename "$built") · 更新仓库 ${REPO:-未设置} · ${LOCK_NOTE}"
