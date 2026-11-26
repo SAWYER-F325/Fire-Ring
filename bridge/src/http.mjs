@@ -9,6 +9,9 @@ import fs from 'node:fs';
 import http from 'node:http';
 import { readSessions } from './sessions.mjs';
 import { readCodexSessions, readClaudeSessions, primeCodexTitles } from './providers.mjs';
+import { readAntigravitySessions } from './provider-antigravity.mjs';
+import { readCursorSessions, recordCursorHook } from './provider-cursor.mjs';
+import { readGrokSessions, recordGrokHook } from './provider-grok.mjs';
 import { createTracker, openedSince, statusOf } from './status.mjs';
 import { exhaustedProviders, readCodexQuota, readQuota } from './quota.mjs';
 import { createAlerts } from './alerts.mjs';
@@ -18,7 +21,10 @@ import { DATA_DIR, PROVIDER_IDS, STATE_FILE, TOKEN_FILE, VERSION, normalizeAlert
 import { buildDiagnostics } from './diagnostics.mjs';
 import { currentRoute } from './egress.mjs';
 import { checkForUpdate, downloadUpdate, startUpdateChecks, updateStatus } from './update.mjs';
-import { connectDeepSeek, detectTools, disconnectDeepSeek, syncDeepSeekPlugin } from './integrations.mjs';
+import {
+  connectCursorHooks, connectDeepSeek, connectGrokHooks, detectTools,
+  disconnectCursorHooks, disconnectDeepSeek, disconnectGrokHooks, syncDeepSeekPlugin,
+} from './integrations.mjs';
 import { deleteKey, hasKey, lastBalance, refreshBalanceNow, saveKey, validKeyShape } from './deepseek-balance.mjs';
 
 // A small JSON body (the API key), never put in a URL where logs could keep it.
@@ -233,10 +239,16 @@ export function startStateServer(port = STATE_PORT) {
     }));
     let codex = [];
     let claude = [];
+    let antigravity = [];
+    let cursor = [];
+    let grok = [];
     if (providers.codex) try { codex = readCodexSessions(); } catch { codex = []; }
     if (providers.claude) try { claude = readClaudeSessions(); } catch { claude = []; }
+    if (providers.antigravity) try { antigravity = readAntigravitySessions(); } catch { antigravity = []; }
+    if (providers.cursor) try { cursor = readCursorSessions(); } catch { cursor = []; }
+    if (providers.grok) try { grok = readGrokSessions(); } catch { grok = []; }
 
-    const sessions = [...dsh, ...codex, ...claude]
+    const sessions = [...dsh, ...codex, ...claude, ...antigravity, ...cursor, ...grok]
       .sort((a, b) => (b.running ? 1 : 0) - (a.running ? 1 : 0) || b.updatedAt - a.updatedAt);
     // Nothing can run on a platform whose usage limit is used up.
     const exhausted = exhaustedProviders();
@@ -405,7 +417,7 @@ export function startStateServer(port = STATE_PORT) {
       return;
     }
 
-    const writes = ['/open', '/opened', '/dismiss', '/dismiss-finished', '/pending', '/island', '/autopeek', '/peek-seconds', '/notch-prefs', '/alerts/prefs', '/demo', '/reset', '/dsh-live', '/log',
+    const writes = ['/open', '/opened', '/dismiss', '/dismiss-finished', '/pending', '/island', '/autopeek', '/peek-seconds', '/notch-prefs', '/alerts/prefs', '/demo', '/reset', '/dsh-live', '/hook', '/log',
       '/config', '/update/check', '/update/download', '/setup/deepseek', '/setup/provider',
       '/deepseek/key', '/deepseek/recheck'];
     if (!writes.includes(url.pathname)) return json({ error: 'not found' }, 404);
@@ -532,6 +544,19 @@ export function startStateServer(port = STATE_PORT) {
         });
         return;
       }
+      case '/hook': {
+        if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
+        if (req.headers['x-bridge-token'] !== token && !allowed.trusted) return json({ error: 'forbidden' }, 403);
+        const provider = param('provider');
+        if (!['cursor', 'grok'].includes(provider)) return json({ error: 'provider: cursor | grok' }, 400);
+        readJsonBody(req, 64 * 1024).then((body) => {
+          if (!body || typeof body !== 'object') return json({ error: 'JSON body' }, 400);
+          const ok = provider === 'cursor' ? recordCursorHook(body) : recordGrokHook(body);
+          if (ok) try { refresh(); } catch (error) { console.error('refresh failed:', error.message); }
+          return json({ ok });
+        });
+        return;
+      }
       case '/reset': {
         if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
         const config = resetPreferences();
@@ -602,6 +627,8 @@ export function startStateServer(port = STATE_PORT) {
         let plugin = null;
         try {
           if (id === 'dsh') plugin = on ? connectDeepSeek() : disconnectDeepSeek();
+          if (id === 'cursor') plugin = on ? connectCursorHooks() : disconnectCursorHooks();
+          if (id === 'grok') plugin = on ? connectGrokHooks() : disconnectGrokHooks();
         } catch (error) {
           return json({ ok: false, error: error.message }, 500);
         }

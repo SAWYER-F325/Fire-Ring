@@ -108,4 +108,4 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ## 各工具的图标
 
-刘海里每条任务前的小图标（`logos/`）是 Claude、Codex、DeepSeek、Kimi、Cursor、Grok 各自的 logo，版权和商标归各自公司所有。Fire Ring 只用它们标明任务来自哪个软件，不代表与这些公司有任何合作或认可关系。
+刘海里每条任务前的小图标（`logos/`）是 Claude、Codex、DeepSeek、Antigravity、Kimi、Cursor、Grok 各自的 logo，版权和商标归各自公司所有。Fire Ring 只用它们标明任务来自哪个软件，不代表与这些公司有任何合作或认可关系。

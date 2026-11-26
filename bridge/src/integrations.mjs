@@ -28,6 +28,104 @@ const PLUGIN_NAME = '@local/dsh-sessions';
 // manager links by path), and it survives Fire Ring updates.
 const PLUGIN_HOME = path.join(DSH_HOME, 'plugins', 'fire-ring');
 
+const agyHome = () => process.env.FIRE_RING_ANTIGRAVITY_HOME || path.join(os.homedir(), '.gemini', 'antigravity');
+const cursorHome = () => process.env.FIRE_RING_CURSOR_HOME || path.join(os.homedir(), '.cursor');
+const grokHome = () => process.env.FIRE_RING_GROK_HOME || path.join(os.homedir(), '.grok');
+const grokDesktopHome = () => process.env.FIRE_RING_GROK_DESKTOP_HOME
+  || path.join(os.homedir(), 'Library', 'Application Support', 'com.grokapp.grok-app');
+
+const HOOK_RELAY = fileURLToPath(new URL('./hook-relay.mjs', import.meta.url));
+const shellQuote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+const hookCommand = (provider) => `${shellQuote(process.execPath)} ${shellQuote(HOOK_RELAY)} --provider ${provider}`;
+const isOurHook = (cmd, provider) => typeof cmd === 'string' && cmd.includes('hook-relay.mjs') && cmd.includes('--provider ' + provider);
+
+const CURSOR_EVENTS = [
+  'beforeSubmitPrompt', 'afterAgentThought', 'beforeShellExecution', 'afterShellExecution',
+  'beforeMCPExecution', 'afterMCPExecution', 'afterFileEdit', 'afterAgentResponse', 'stop',
+];
+const GROK_EVENTS = [
+  'SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure',
+  'Notification', 'Stop', 'SessionEnd',
+];
+
+export function cursorHookState() {
+  const file = path.join(cursorHome(), 'hooks.json');
+  const data = readJson(file);
+  const hooks = data && data.hooks && typeof data.hooks === 'object' ? data.hooks : null;
+  if (!hooks) return 'off';
+  const has = Object.values(hooks).some((list) => Array.isArray(list) && list.some((e) => isOurHook(e && e.command, 'cursor')));
+  return has ? 'on' : 'off';
+}
+
+export function connectCursorHooks() {
+  const dir = cursorHome();
+  const file = path.join(dir, 'hooks.json');
+  fs.mkdirSync(dir, { recursive: true });
+  const existed = exists(file);
+  const data = readJson(file) || { version: 1, hooks: {} };
+  if (existed && !exists(file + '.fire-ring-backup')) {
+    fs.copyFileSync(file, file + '.fire-ring-backup');
+  }
+  data.version = data.version || 1;
+  data.hooks = data.hooks && typeof data.hooks === 'object' ? data.hooks : {};
+  const cmd = hookCommand('cursor');
+  for (const ev of CURSOR_EVENTS) {
+    const list = Array.isArray(data.hooks[ev]) ? data.hooks[ev] : [];
+    if (!list.some((e) => isOurHook(e && e.command, 'cursor'))) {
+      list.push({ command: cmd });
+    }
+    data.hooks[ev] = list;
+  }
+  fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
+  console.log('[setup] Cursor hooks connected');
+  return cursorHookState();
+}
+
+export function disconnectCursorHooks() {
+  const file = path.join(cursorHome(), 'hooks.json');
+  const data = readJson(file);
+  if (data && data.hooks && typeof data.hooks === 'object') {
+    for (const [ev, list] of Object.entries(data.hooks)) {
+      if (!Array.isArray(list)) continue;
+      const filtered = list.filter((e) => !isOurHook(e && e.command, 'cursor'));
+      if (filtered.length) data.hooks[ev] = filtered;
+      else delete data.hooks[ev];
+    }
+    if (Object.keys(data.hooks).length === 0 && !exists(file + '.fire-ring-backup')) {
+      fs.rmSync(file, { force: true });
+    } else {
+      fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
+    }
+  }
+  console.log('[setup] Cursor hooks removed');
+  return cursorHookState();
+}
+
+export function grokHookState() {
+  return exists(path.join(grokHome(), 'hooks', 'fire-ring.json')) ? 'on' : 'off';
+}
+
+export function connectGrokHooks() {
+  const dir = path.join(grokHome(), 'hooks');
+  fs.mkdirSync(dir, { recursive: true });
+  const cmd = hookCommand('grok');
+  const hooks = {};
+  for (const ev of GROK_EVENTS) {
+    const entry = { hooks: [{ type: 'command', command: cmd }] };
+    if (['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Notification'].includes(ev)) entry.matcher = '*';
+    hooks[ev] = [entry];
+  }
+  fs.writeFileSync(path.join(dir, 'fire-ring.json'), JSON.stringify({ hooks }, null, 2) + '\n');
+  console.log('[setup] Grok hooks connected');
+  return grokHookState();
+}
+
+export function disconnectGrokHooks() {
+  fs.rmSync(path.join(grokHome(), 'hooks', 'fire-ring.json'), { force: true });
+  console.log('[setup] Grok hooks removed');
+  return grokHookState();
+}
+
 /** The plugin as shipped: inside the app, or in the repository when run by hand. */
 function pluginSource() {
   const candidates = [
@@ -83,6 +181,29 @@ export function detectTools() {
       plugin: dshPluginState(),
       pluginLocation: PLUGIN_HOME,
       connected: providers.dsh,
+    },
+    {
+      id: 'antigravity',
+      name: 'Antigravity',
+      found: exists(path.join(agyHome(), 'conversation_summaries.db')) || appInstalled('Antigravity.app'),
+      app: appInstalled('Antigravity.app'),
+      connected: providers.antigravity,
+    },
+    {
+      id: 'cursor',
+      name: 'Cursor',
+      found: exists(cursorHome()) || appInstalled('Cursor.app'),
+      app: appInstalled('Cursor.app'),
+      hook: cursorHookState(),
+      connected: providers.cursor,
+    },
+    {
+      id: 'grok',
+      name: 'Grok',
+      found: exists(path.join(grokHome(), 'sessions')) || exists(path.join(grokDesktopHome(), 'sessions_index.json')) || appInstalled('Grok.app'),
+      app: appInstalled('Grok.app'),
+      hook: grokHookState(),
+      connected: providers.grok,
     },
   ];
 }
