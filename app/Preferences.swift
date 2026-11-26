@@ -2,7 +2,7 @@ import AppKit
 import ServiceManagement
 import WebKit
 
-/// The settings window: setup on first launch, then connections, network,
+/// The settings window: connections, network,
 /// launch at login and updates. Its content is settings.html on system glass.
 final class PreferencesWindow: NSObject, NSWindowDelegate, WKScriptMessageHandler, WKNavigationDelegate {
     private var window: NSWindow?
@@ -19,7 +19,7 @@ final class PreferencesWindow: NSObject, NSWindowDelegate, WKScriptMessageHandle
         self.quit = quit
     }
 
-    /// Whether the first-launch setup has been finished.
+    /// Whether Fire Ring has been opened before (the first launch opens Connections).
     static var onboarded: Bool { FireRingPaths.readConfig()["onboarded"] as? Bool ?? false }
 
     /// 提前在后台把页面加载好，第一次打开时就不会先出现一块空玻璃。
@@ -156,6 +156,7 @@ final class PreferencesWindow: NSObject, NSWindowDelegate, WKScriptMessageHandle
     }
 
     func windowWillClose(_ notification: Notification) {
+        GlobalHotKey.stopRecording()
         NSApp.setActivationPolicy(.accessory)
     }
 
@@ -163,6 +164,7 @@ final class PreferencesWindow: NSObject, NSWindowDelegate, WKScriptMessageHandle
         let payload: [String: Any] = [
             "loginItem": LoginItem.enabled,
             "loginItemNeedsApproval": LoginItem.needsApproval,
+            "hotKeys": GlobalHotKey.state(),
             "appPath": Bundle.main.bundlePath,
             "version": BridgeProcess.version,
             "macOS": ProcessInfo.processInfo.operatingSystemVersionString,
@@ -189,6 +191,19 @@ final class PreferencesWindow: NSObject, NSWindowDelegate, WKScriptMessageHandle
         case "loginPrompt":
             let error = LoginItem.answer(body["choice"] as? String ?? "")
             reply(["loginItem": LoginItem.enabled, "loginItemNeedsApproval": LoginItem.needsApproval, "error": error ?? NSNull()])
+        case "hotKeyRecord":
+            guard let action = GlobalHotKey.Action(rawValue: body["action"] as? String ?? "") else { return }
+            GlobalHotKey.record(action) { [weak self] error in
+                self?.reply(["hotKeys": GlobalHotKey.state(), "hotKeyError": error.map { [action.rawValue: $0] } ?? NSNull()])
+            }
+        case "hotKeyCancel":
+            GlobalHotKey.stopRecording()
+            reply(["hotKeys": GlobalHotKey.state(), "hotKeyError": NSNull()])
+        case "hotKeyClear":
+            guard let action = GlobalHotKey.Action(rawValue: body["action"] as? String ?? "") else { return }
+            GlobalHotKey.stopRecording()
+            _ = GlobalHotKey.set(action, nil)
+            reply(["hotKeys": GlobalHotKey.state(), "hotKeyError": NSNull()])
         case "openLoginItemSettings":
             SMAppService.openSystemSettingsLoginItems()
         case "copy":
@@ -219,11 +234,6 @@ final class PreferencesWindow: NSObject, NSWindowDelegate, WKScriptMessageHandle
             }
         case "openNotificationSettings":
             AlertCenter.shared.openSettings()
-        case "replayWelcome":
-            closeAnimated()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                WelcomeSignature.replay { [weak self] in self?.show(section: "welcome") }
-            }
         case "saveDiagnostics":
             reply(Diagnostics.save(body["text"] as? String ?? ""))
         case "revealFile":
@@ -312,7 +322,7 @@ func installMainMenu(quit: Selector, target: AnyObject) {
 
 /// Launch at login, and whether to ask about it.
 ///
-/// Asked during first setup, and afterwards at the top of the menu-bar panel,
+/// Asked at the top of the menu-bar panel after the first launch,
 /// until it is on. "不允许" stops asking for as long as the app keeps running;
 /// "以后不再提醒" (saved as loginPrompt: "never" by the page) stops for good.
 enum LoginItem {

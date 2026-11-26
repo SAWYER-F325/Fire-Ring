@@ -384,6 +384,10 @@ export function startStateServer(port = STATE_PORT) {
       return;
     }
 
+    // The app reads alerts itself, so a sound never waits on the notch page
+    // (which macOS slows down while the notch is hidden or covered).
+    if (url.pathname === '/alerts') return json(alerts.latest());
+
     if (url.pathname === '/state') {
       if (req.method !== 'GET') return json({ error: 'GET only' }, 405);
       const reply = () => {

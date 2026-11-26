@@ -33,7 +33,7 @@ Needs macOS 14 or later on Apple silicon (M-series).
 1. Download the latest `FireRing-version-arm64.dmg` from [Releases](../../releases).
 2. Open the dmg and drag Fire Ring into Applications.
 3. First open: Fire Ring is not yet signed with an Apple developer certificate, so macOS says it cannot verify the developer. Open System Settings → Privacy & Security and click “Open Anyway” near the bottom. Only once.
-4. A handwritten “fire” greets you on first launch. Then connect the tools you use under Connections, and you are done.
+4. On first launch, Settings opens on Connections. Connect the tools you use, and you are done.
 
 ## DeepSeek balance (optional)
 

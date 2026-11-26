@@ -3,7 +3,7 @@
 ## 目录
 
 ```
-app/            Swift App：刘海（index.html）、菜单栏面板（panel.html）、设置窗口（settings.html）、欢迎页
+app/            Swift App：刘海（index.html）、菜单栏面板（panel.html）、设置窗口（settings.html）
   logos/        各工具的小 logo（版权归各自公司，见 LICENSES.md；Cursor、Kimi、Grok 的还没用上）
   sounds/       提示音
 bridge/         后台服务（Node）：读取各工具的状态，在 127.0.0.1:47821 提供给 App

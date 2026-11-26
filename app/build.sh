@@ -66,7 +66,7 @@ for sdk in "${SDKS[@]}"; do
       -module-cache-path "$BUILD/modulecache" \
       -target "$ARCH-apple-macos14.0" \
       -o "$APP/Contents/MacOS/FireRing" \
-      "$APP_DIR/main.swift" "$APP_DIR/Bridge.swift" "$APP_DIR/Preferences.swift" "$APP_DIR/Glass.swift" "$APP_DIR/Welcome.swift" "$APP_DIR/Alerts.swift" \
+      "$APP_DIR/main.swift" "$APP_DIR/Bridge.swift" "$APP_DIR/Preferences.swift" "$APP_DIR/Glass.swift" "$APP_DIR/Alerts.swift" \
       -framework AppKit -framework Carbon -framework WebKit -framework ServiceManagement -framework UserNotifications 2>"$BUILD/swiftc.log"; then
     built="$sdk"; break
   fi
@@ -77,8 +77,7 @@ done
 RES="$APP/Contents/Resources"
 sed -e "s#__VERSION__#$VERSION#" -e "s#__BUILD__#$BUILD_NUMBER#" -e "s#__REPO__#$REPO#" \
   "$APP_DIR/Info.plist" > "$APP/Contents/Info.plist"
-cp "$APP_DIR/index.html" "$APP_DIR/panel.html" "$APP_DIR/settings.html" "$APP_DIR/welcome.html" "$RES/"
-cp -R "$APP_DIR/brand" "$RES/brand"
+cp "$APP_DIR/index.html" "$APP_DIR/panel.html" "$APP_DIR/settings.html" "$RES/"
 cp -R "$APP_DIR/fonts" "$RES/fonts"
 cp -R "$APP_DIR/logos" "$RES/logos"
 cp -R "$APP_DIR/sounds" "$RES/sounds"

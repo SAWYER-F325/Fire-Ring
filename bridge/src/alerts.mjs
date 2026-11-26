@@ -56,6 +56,10 @@ export function createAlerts({
       body: alerts.notify.title ? body : '打开 Fire Ring 查看',
     });
     while (events.length > KEEP) events.shift();
+    // 只记种类、会话编号和发了什么，不记标题和对话内容
+    console.log('[alert] ' + new Date(now()).toISOString().slice(11, 19) + ' #' + seq + ' ' + kind
+      + (session ? ' ' + String(session).slice(0, 8) : '')
+      + ' 声音=' + (wantsSound ? sound : '无') + ' 通知=' + (notify ? '是' : '否'));
   }
 
   function sessionAlert(kind, s, extra = '') {

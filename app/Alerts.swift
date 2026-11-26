@@ -114,11 +114,14 @@ final class AlertCenter: NSObject, UNUserNotificationCenterDelegate {
 /// 刘海所在的屏幕上，现在是不是一个全屏 App（看视频、全屏写代码）。
 enum FullscreenWatch {
     static func isFullscreen(on screen: NSScreen) -> Bool {
+        isFullscreen(frame: screen.frame, primaryHeight: NSScreen.screens.first?.frame.height ?? screen.frame.height)
+    }
+
+    /// Safe off the main thread: it takes the screen's geometry, not the NSScreen.
+    static func isFullscreen(frame: CGRect, primaryHeight: CGFloat) -> Bool {
         guard let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
         else { return false }
         // 窗口位置用的是左上角为原点的坐标
-        let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
-        let frame = screen.frame
         let target = CGRect(x: frame.minX, y: primaryHeight - frame.maxY, width: frame.width, height: frame.height)
         let mine = ProcessInfo.processInfo.processIdentifier
         for window in windows {

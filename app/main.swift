@@ -10,8 +10,13 @@ import WebKit
 //   click → opens that conversation
 //
 // The window is a borderless, non-activating NSPanel at menu-bar level hosting
-// a WKWebView. It is a fixed transparent canvas: only the shape drawn inside it
-// animates, because resizing a WKWebView mid-animation stutters and flashes.
+// a WKWebView. The page is a fixed transparent canvas: only the shape drawn
+// inside it animates, because resizing a WKWebView mid-animation stutters and
+// flashes. The window keeps the canvas width but is only as tall as the bar
+// needs while collapsed, so it does not sit over other apps. It grows to the
+// full canvas the moment the pointer arrives or a card is about to open, and
+// shrinks back only after the close animation is over. The page is pinned to
+// the window's top-left (a flipped view), so resizing never moves it.
 // Clicks pass through everything outside the shape.
 
 final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavigationDelegate {
@@ -26,6 +31,9 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
     private var rightWing: CGFloat = 0
     private var barHeight: CGFloat = 32
     private var shapeSize = NSSize(width: 176, height: 32)
+    private var windowHeight: CGFloat = 60
+    private var shrinkWork: DispatchWorkItem?
+    private let glowMargin: CGFloat = 28   // below the collapsed bar: its glow and shadow
 
     private var activity: NSObjectProtocol?
     private var statusItem: NSStatusItem?
@@ -42,6 +50,9 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
     private var nextReloadAt: CFTimeInterval = 0
     private var fullscreenTimer: Timer?
     private var lastFullscreen: Bool?
+    private var fullscreenChecking = false
+    private var alertSeq: Int?          // the last alert delivered (or already there at launch)
+    private var alertTimer: Timer?
     private var hotKey: GlobalHotKey?
 
     private let settings = SettingsPanel()
@@ -121,14 +132,21 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
         )
         panel.isFloatingPanel = true
         panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.mainMenuWindow)) + 1)
-        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
+        // canJoinAllApplications lets it join other apps' full-screen spaces as
+        // part of them, instead of being added only after the swipe has finished.
+        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle, .canJoinAllApplications]
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = false
         panel.hidesOnDeactivate = false
         panel.animationBehavior = .none
         panel.ignoresMouseEvents = true
-        panel.contentView = web
+        let root = FlippedView(frame: NSRect(origin: .zero, size: canvas))
+        root.autoresizesSubviews = false
+        web.frame = NSRect(origin: .zero, size: canvas)
+        root.addSubview(web)
+        panel.contentView = root
+        windowHeight = fittedHeight(for: shapeSize)
         positionCanvas()
         panel.orderFrontRegardless()
 
@@ -149,6 +167,7 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
         startPointerTracking()
         startWatchdog()
         AlertCenter.shared.start()
+        startAlertPolling()
         AlertCenter.shared.openSession = { [weak self] id in
             guard let data = try? JSONSerialization.data(withJSONObject: [id]),
                   let quoted = String(data: data, encoding: .utf8) else { return }
@@ -158,9 +177,10 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
         // 提前把设置页加载好，第一次打开时直接是毛玻璃
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.preferences.prepare() }
         if !PreferencesWindow.onboarded {
-            // First launch: the "fire" signature, once ever, then setup.
+            // First launch: open Connections once, so there is a place to start.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-                WelcomeSignature.showOnce { self?.preferences.show(section: "welcome") }
+                self?.preferences.show(section: "connect")
+                self?.postBridge("/config?onboarded=1")
             }
         }
     }
@@ -222,17 +242,74 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
         for name in [NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.didActivateApplicationNotification] {
             center.addObserver(self, selector: #selector(checkFullscreen), name: name, object: nil)
         }
+        center.addObserver(self, selector: #selector(spaceChanged), name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
         fullscreenTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.checkFullscreen()
         }
     }
 
+    // MARK: Alerts
+
+    /// Sounds and notifications come straight from the bridge once a second,
+    /// so they do not depend on the notch page, which macOS slows down while
+    /// the notch is hidden (a full-screen app) or covered.
+    private func startAlertPolling() {
+        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in self?.pollAlerts() }
+        timer.tolerance = 0.2
+        RunLoop.main.add(timer, forMode: .common)
+        alertTimer = timer
+    }
+
+    private func pollAlerts() {
+        guard let url = URL(string: Self.bridgeURL + "/alerts") else { return }
+        Self.localSession.dataTask(with: url) { [weak self] data, _, _ in
+            guard let data, let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let seq = (body["seq"] as? NSNumber)?.intValue else { return }
+            let events = body["events"] as? [[String: Any]] ?? []
+            DispatchQueue.main.async {
+                guard let self else { return }
+                // First look, or the bridge restarted: only alerts from now on.
+                guard let last = self.alertSeq, seq >= last else { self.alertSeq = seq; return }
+                for event in events {
+                    guard let n = (event["seq"] as? NSNumber)?.intValue else { continue }
+                    self.deliverAlert(seq: n, event: event, via: "App")
+                }
+            }
+        }.resume()
+    }
+
+    private func deliverAlert(seq: Int, event: [String: Any], via: String) {
+        if let last = alertSeq, seq <= last { return }
+        alertSeq = seq
+        AlertCenter.shared.deliver(event)
+        let note = "[alert] 已发出 #\(seq)（\(via)）"
+        if let encoded = note.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) { postBridge("/log?m=" + encoded) }
+    }
+
+    /// On a new space, bring the island forward at once rather than waiting
+    /// for the system to place it.
+    @objc private func spaceChanged() {
+        guard let panel, panel.alphaValue > 0 else { return }
+        panel.orderFrontRegardless()
+    }
+
+    /// Listing every window on screen takes a few milliseconds, so it runs off
+    /// the main thread and never lands in the middle of an animation frame.
     @objc private func checkFullscreen() {
-        guard let screen, !screensAsleep else { return }
-        let now = FullscreenWatch.isFullscreen(on: screen)
-        guard now != lastFullscreen else { return }
-        lastFullscreen = now
-        callJS("window.__setFullscreen && window.__setFullscreen(\(now))")
+        guard let screen, !screensAsleep, !fullscreenChecking else { return }
+        fullscreenChecking = true
+        let frame = screen.frame
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? frame.height
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let now = FullscreenWatch.isFullscreen(frame: frame, primaryHeight: primaryHeight)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.fullscreenChecking = false
+                guard now != self.lastFullscreen else { return }
+                self.lastFullscreen = now
+                self.callJS("window.__setFullscreen && window.__setFullscreen(\(now))")
+            }
+        }
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -267,11 +344,42 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
         positionCanvas()
     }
 
-    /// Centred under the notch, flush with the top of the screen.
+    /// Centred under the notch, flush with the top of the screen. The page sits
+    /// at the window's top-left, so changing the height never moves it.
     private func positionCanvas() {
         guard let screen, let panel else { return }
-        let origin = NSPoint(x: screen.frame.midX - canvas.width / 2, y: screen.frame.maxY - canvas.height)
-        panel.setFrame(NSRect(origin: origin, size: canvas), display: true)
+        let origin = NSPoint(x: (screen.frame.midX - canvas.width / 2).rounded(), y: screen.frame.maxY - windowHeight)
+        panel.setFrame(NSRect(origin: origin, size: NSSize(width: canvas.width, height: windowHeight)), display: false)
+    }
+
+    private func fittedHeight(for shape: NSSize) -> CGFloat {
+        min(canvas.height, (shape.height + glowMargin).rounded(.up))
+    }
+
+    /// Full canvas, before anything starts to grow.
+    private func expandWindow() {
+        shrinkWork?.cancel()
+        guard windowHeight < canvas.height else { return }
+        windowHeight = canvas.height
+        positionCanvas()
+    }
+
+    /// The page reports the shape's target size when an animation starts.
+    /// Growing: make room now. Shrinking: wait until the animation is over.
+    private func shapeChanged() {
+        let target = fittedHeight(for: shapeSize)
+        if target > windowHeight { expandWindow(); return }
+        shrinkWork?.cancel()
+        guard target < windowHeight else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            let latest = self.fittedHeight(for: self.shapeSize)
+            guard latest < self.windowHeight, !self.lastHoverInside else { return }
+            self.windowHeight = latest
+            self.positionCanvas()
+        }
+        shrinkWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)   // the page's longest shape animation is 420 ms
     }
 
     /// The bridge's shared secret, handed to the pages so a website cannot pose
@@ -343,6 +451,7 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
         // 黑条长大时把静止的指针圈进来，之后指针一动，才算真正的悬停。
         if inside && moved && enclosedInside {
             enclosedInside = false
+            expandWindow()
             callJS("window.__setHover && window.__setHover(true)")
             return
         }
@@ -358,7 +467,9 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
 
         enclosedInside = false
         lastHoverInside = inside
+        if inside { expandWindow() }
         callJS("window.__setHover && window.__setHover(\(inside))")
+        if !inside { shapeChanged() }   // nothing opened: shrink back once the pointer leaves
     }
 
     /// The flame in the menu bar, beside the notch.
@@ -611,6 +722,7 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
             let width = (body["width"] as? NSNumber)?.doubleValue ?? Double(shapeSize.width)
             let height = (body["height"] as? NSNumber)?.doubleValue ?? Double(shapeSize.height)
             shapeSize = NSSize(width: width, height: height)
+            shapeChanged()
             pointerChanged()
         case "hide":
             // Keep the panel on screen but invisible: an ordered-out WebView is
@@ -622,7 +734,9 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
             panel.alphaValue = 1
             panel.orderFrontRegardless()
         case "alert":
-            AlertCenter.shared.deliver(body)
+            // The notch page forwards alerts too; whichever arrives first plays.
+            if let seq = (body["seq"] as? NSNumber)?.intValue { deliverAlert(seq: seq, event: body, via: "刘海页面") }
+            else { AlertCenter.shared.deliver(body) }
         case "burn":
             // 清除时的燃烧声：单条「余烬」，全部「呼燃」。音量跟提示音一致。
             let alerts = FireRingPaths.readConfig()["alerts"] as? [String: Any]
@@ -687,7 +801,7 @@ final class SettingsPanel {
     private let edgeRim = CAGradientLayer()
     private let edgeRimMask = CAShapeLayer()
     private var web: WKWebView?
-    private let maxContentHeight: CGFloat = 1100  // the window and page stay this size
+    private let maxContentHeight: CGFloat = 1100  // the page stays this size; the window follows the card
     private var availableHeight: CGFloat = 700    // what fits below the menu bar on this screen
     private var height: CGFloat = 340
     private var heightTarget: CGFloat = 340
@@ -705,7 +819,9 @@ final class SettingsPanel {
     }
 
     func load(config: WKWebViewConfiguration, delegate: WKNavigationDelegate) {
-        window.setContentSize(NSSize(width: width + sideMargin * 2, height: maxContentHeight + topMargin + bottomMargin))
+        // The window is only as tall as the card needs (plus its shadow), so the
+        // empty space below the card never catches clicks meant for other apps.
+        window.setContentSize(NSSize(width: width + sideMargin * 2, height: windowHeight(for: height)))
         window.isFloatingPanel = true
         window.level = .popUpMenu
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
@@ -786,6 +902,7 @@ final class SettingsPanel {
         }
         tweenFrom = height
         tweenStart = CACurrentMediaTime()
+        fitWindow(to: max(height, next), growOnly: true)
         guard heightTween == nil else { return }
         let timer = Timer(timeInterval: 1.0 / 120, repeats: true) { [weak self] _ in self?.stepHeight() }
         RunLoop.main.add(timer, forMode: .common)
@@ -799,6 +916,7 @@ final class SettingsPanel {
         if progress >= 1 {
             heightTween?.invalidate()
             heightTween = nil
+            fitWindow(to: heightTarget)
         }
     }
 
@@ -807,11 +925,26 @@ final class SettingsPanel {
         heightTween = nil
         heightTarget = next
         height = next
+        fitWindow(to: next)
+        applySize()
+    }
+
+    /// Room for the card at this height, its springy overshoot and its shadow.
+    private func windowHeight(for cardHeight: CGFloat) -> CGFloat {
+        (cardHeight * 1.06 + topMargin + bottomMargin).rounded(.up)
+    }
+
+    /// Resizes the window around the card, keeping its top edge where it is.
+    private func fitWindow(to cardHeight: CGFloat, growOnly: Bool = false) {
+        let next = windowHeight(for: cardHeight)
+        let frame = window.frame
+        guard next != frame.height, !(growOnly && next < frame.height) else { return }
+        window.setFrame(NSRect(x: frame.minX, y: frame.maxY - next, width: frame.width, height: next), display: false)
         applySize()
     }
 
     private func applySize() {
-        card.frame = NSRect(x: sideMargin, y: bottomMargin + maxContentHeight - height, width: width, height: height)
+        card.frame = NSRect(x: sideMargin, y: window.frame.height - topMargin - height, width: width, height: height)
         card.subviews.first?.frame = card.bounds
         card.layer?.shadowPath = roundedPath(inset: 0)
         layoutEdge()
@@ -1025,6 +1158,11 @@ final class SettingsPanel {
     }
 }
 
+/// Top-left origin, so the notch page stays put while the window's height changes.
+final class FlippedView: NSView {
+    override var isFlipped: Bool { true }
+}
+
 final class KeyablePanel: NSPanel {
     override var canBecomeKey: Bool { true }
 }
@@ -1035,59 +1173,183 @@ final class AcceptsFirstMouseWebView: WKWebView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
-/// Global shortcuts without requiring Accessibility permission:
-/// ⌥⌘F toggles the menu-bar panel; ⇧⌥⌘F opens Settings directly.
+/// Global shortcuts the user records in Settings (no Accessibility permission
+/// needed). None are set by default: a global shortcut takes the same keys away
+/// from every other app.
 final class GlobalHotKey {
-    private static let signature: OSType = 0x46524E47 // 'FRNG'
-    private var panelRef: EventHotKeyRef?
-    private var prefsRef: EventHotKeyRef?
-    private var handlerRef: EventHandlerRef?
-    private let onPanel: () -> Void
-    private let onPreferences: () -> Void
-
-    init(onPanel: @escaping () -> Void, onPreferences: @escaping () -> Void) {
-        self.onPanel = onPanel
-        self.onPreferences = onPreferences
-        register()
+    enum Action: String, CaseIterable {
+        case panel, prefs
+        var id: UInt32 { self == .panel ? 1 : 2 }
     }
 
-    private func register() {
+    struct Combo: Codable {
+        let keyCode: UInt32
+        let mods: UInt32     // Carbon modifier mask
+        let label: String
+    }
+
+    static let changed = Notification.Name("FireRing.globalHotKeysChanged")
+    private static func key(_ a: Action) -> String { "hotKey." + a.rawValue }
+
+    static func combo(_ a: Action) -> Combo? {
+        guard let data = UserDefaults.standard.data(forKey: key(a)) else { return nil }
+        return try? JSONDecoder().decode(Combo.self, from: data)
+    }
+
+    /// Saves (or clears, with nil) one shortcut and re-registers. Returns why it could not be used.
+    static func set(_ a: Action, _ combo: Combo?) -> String? {
+        if let combo, let data = try? JSONEncoder().encode(combo) { UserDefaults.standard.set(data, forKey: key(a)) }
+        else { UserDefaults.standard.removeObject(forKey: key(a)) }
+        var errors: [Action: String] = [:]
+        NotificationCenter.default.post(name: changed, object: nil, userInfo: ["reply": { (e: [Action: String]) in errors = e }])
+        return errors[a]
+    }
+
+    /// What Settings shows: each action's label, or null.
+    static func state() -> [String: Any] {
+        var out: [String: Any] = [:]
+        for a in Action.allCases { out[a.rawValue] = combo(a)?.label ?? NSNull() }
+        return out
+    }
+
+    /// 0.2.3 测试版只有一个开关（⌥⌘F / ⇧⌥⌘F）；打开过的，换成同样的两个组合。
+    static func migrate() {
+        let old = "globalHotKeys"
+        guard UserDefaults.standard.object(forKey: old) != nil else { return }
+        if UserDefaults.standard.bool(forKey: old), combo(.panel) == nil, combo(.prefs) == nil {
+            let f = UInt32(kVK_ANSI_F)
+            _ = try? UserDefaults.standard.set(JSONEncoder().encode(Combo(keyCode: f, mods: UInt32(optionKey | cmdKey), label: "⌥⌘F")), forKey: key(.panel))
+            _ = try? UserDefaults.standard.set(JSONEncoder().encode(Combo(keyCode: f, mods: UInt32(shiftKey | optionKey | cmdKey), label: "⇧⌥⌘F")), forKey: key(.prefs))
+        }
+        UserDefaults.standard.removeObject(forKey: old)
+    }
+
+    // MARK: Recording
+
+    private static var monitor: Any?
+    static var isRecording: Bool { monitor != nil }
+
+    /// Waits for the next key press in Fire Ring's own windows. Esc cancels.
+    /// The shortcuts are paused meanwhile, so pressing a current one records it.
+    static func record(_ a: Action, done: @escaping (_ error: String?) -> Void) {
+        stopRecording()
+        NotificationCenter.default.post(name: changed, object: nil, userInfo: ["pause": true])
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            if event.keyCode == UInt16(kVK_Escape) {
+                stopRecording()
+                done(nil)
+                return nil
+            }
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard !flags.intersection([.command, .option, .control]).isEmpty else {
+                NSSound.beep()
+                return nil   // keep waiting: a shortcut needs ⌘, ⌥ or ⌃
+            }
+            var mods: UInt32 = 0
+            var label = ""
+            if flags.contains(.control) { mods |= UInt32(controlKey); label += "⌃" }
+            if flags.contains(.option) { mods |= UInt32(optionKey); label += "⌥" }
+            if flags.contains(.shift) { mods |= UInt32(shiftKey); label += "⇧" }
+            if flags.contains(.command) { mods |= UInt32(cmdKey); label += "⌘" }
+            label += keyName(event)
+            stopRecording(resume: false)
+            done(set(a, Combo(keyCode: UInt32(event.keyCode), mods: mods, label: label)))
+            return nil
+        }
+    }
+
+    static func stopRecording(resume: Bool = true) {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        let was = monitor != nil
+        monitor = nil
+        if was && resume { NotificationCenter.default.post(name: changed, object: nil) }
+    }
+
+    private static let named: [Int: String] = [
+        kVK_Space: "空格", kVK_Return: "↩", kVK_Tab: "⇥", kVK_Delete: "⌫", kVK_ForwardDelete: "⌦",
+        kVK_LeftArrow: "←", kVK_RightArrow: "→", kVK_UpArrow: "↑", kVK_DownArrow: "↓",
+        kVK_Home: "↖", kVK_End: "↘", kVK_PageUp: "⇞", kVK_PageDown: "⇟",
+        kVK_F1: "F1", kVK_F2: "F2", kVK_F3: "F3", kVK_F4: "F4", kVK_F5: "F5", kVK_F6: "F6",
+        kVK_F7: "F7", kVK_F8: "F8", kVK_F9: "F9", kVK_F10: "F10", kVK_F11: "F11", kVK_F12: "F12",
+    ]
+
+    private static func keyName(_ event: NSEvent) -> String {
+        if let name = named[Int(event.keyCode)] { return name }
+        let base = event.characters(byApplyingModifiers: []) ?? event.charactersIgnoringModifiers ?? "?"
+        return base.uppercased()
+    }
+
+    // MARK: Registration
+
+    private static let signature: OSType = 0x46524E47 // 'FRNG'
+    private var refs: [Action: EventHotKeyRef] = [:]
+    private var handlerRef: EventHandlerRef?
+    private let handlers: [Action: () -> Void]
+    private var observer: NSObjectProtocol?
+
+    init(onPanel: @escaping () -> Void, onPreferences: @escaping () -> Void) {
+        handlers = [.panel: onPanel, .prefs: onPreferences]
+        Self.migrate()
+        installHandler()
+        _ = registerAll()
+        observer = NotificationCenter.default.addObserver(forName: Self.changed, object: nil, queue: nil) { [weak self] note in
+            guard let self else { return }
+            self.unregisterAll()
+            if note.userInfo?["pause"] as? Bool == true { return }
+            let errors = self.registerAll()
+            (note.userInfo?["reply"] as? ([Action: String]) -> Void)?(errors)
+        }
+    }
+
+    private func installHandler() {
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         let selfPtr = Unmanaged.passUnretained(self).toOpaque()
         let callback: EventHandlerUPP = { _, event, userData in
             guard let event, let userData else { return noErr }
             var hkID = EventHotKeyID()
-            let status = GetEventParameter(
-                event,
-                EventParamName(kEventParamDirectObject),
-                EventParamType(typeEventHotKeyID),
-                nil,
-                MemoryLayout<EventHotKeyID>.size,
-                nil,
-                &hkID
-            )
+            let status = GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
+                                           nil, MemoryLayout<EventHotKeyID>.size, nil, &hkID)
             guard status == noErr, hkID.signature == GlobalHotKey.signature else { return noErr }
             let target = Unmanaged<GlobalHotKey>.fromOpaque(userData).takeUnretainedValue()
             DispatchQueue.main.async {
-                if hkID.id == 1 { target.onPanel() }
-                else if hkID.id == 2 { target.onPreferences() }
+                if let action = Action.allCases.first(where: { $0.id == hkID.id }) { target.handlers[action]?() }
             }
             return noErr
         }
-        guard InstallEventHandler(GetApplicationEventTarget(), callback, 1, &eventType, selfPtr, &handlerRef) == noErr else { return }
-        let modsPanel = UInt32(optionKey | cmdKey)
-        let modsPrefs = UInt32(shiftKey | optionKey | cmdKey)
-        RegisterEventHotKey(UInt32(kVK_ANSI_F), modsPanel, EventHotKeyID(signature: Self.signature, id: 1), GetApplicationEventTarget(), 0, &panelRef)
-        RegisterEventHotKey(UInt32(kVK_ANSI_F), modsPrefs, EventHotKeyID(signature: Self.signature, id: 2), GetApplicationEventTarget(), 0, &prefsRef)
+        InstallEventHandler(GetApplicationEventTarget(), callback, 1, &eventType, selfPtr, &handlerRef)
+    }
+
+    /// Registers every recorded shortcut; returns the ones another app already holds.
+    private func registerAll() -> [Action: String] {
+        var errors: [Action: String] = [:]
+        var seen: [String: Action] = [:]
+        for a in Action.allCases {
+            guard let c = Self.combo(a) else { continue }
+            let sig = "\(c.keyCode):\(c.mods)"
+            if seen[sig] != nil { errors[a] = c.label + " 已经用在另一项上了"; continue }
+            seen[sig] = a
+            var ref: EventHotKeyRef?
+            let status = RegisterEventHotKey(c.keyCode, c.mods, EventHotKeyID(signature: Self.signature, id: a.id),
+                                             GetApplicationEventTarget(), 0, &ref)
+            if status == noErr, let ref { refs[a] = ref } else { errors[a] = c.label + " 已被别的软件占用" }
+        }
+        return errors
+    }
+
+    private func unregisterAll() {
+        for ref in refs.values { UnregisterEventHotKey(ref) }
+        refs = [:]
     }
 
     func unregister() {
-        if let ref = panelRef { UnregisterEventHotKey(ref); panelRef = nil }
-        if let ref = prefsRef { UnregisterEventHotKey(ref); prefsRef = nil }
+        unregisterAll()
         if let h = handlerRef { RemoveEventHandler(h); handlerRef = nil }
     }
 
-    deinit { unregister() }
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+        unregister()
+    }
 }
 
 let island = Island()

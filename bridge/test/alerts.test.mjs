@@ -152,3 +152,23 @@ test('结束时间和状态都变了，只响一次', () => {
   a.observe([s('a', 'finished', { turnEndedAt: 999 })]);
   assert.deepEqual(kinds(a), ['done']);
 });
+
+test('每条提醒写一行日志：只有种类、编号和发了什么，没有标题和对话内容', () => {
+  const { a } = setup({ volume: 40 });
+  const lines = [];
+  const original = console.log;
+  console.log = (...args) => lines.push(args.join(' '));
+  try {
+    a.observe([s('abcdef1234', 'running', { title: '不该进日志的标题' })]);
+    a.observe([s('abcdef1234', 'finished', { title: '不该进日志的标题' })]);
+  } finally {
+    console.log = original;
+  }
+  const line = lines.find((l) => l.startsWith('[alert]'));
+  assert.match(line, /#1 done abcdef12 声音=fr-arp 通知=否/);
+  assert.doesNotMatch(line, /标题/);
+  // App 直接取提醒时，声音和音量就在事件里
+  const [e] = a.latest().events;
+  assert.equal(e.sound, 'fr-arp');
+  assert.equal(e.volume, 40);
+});

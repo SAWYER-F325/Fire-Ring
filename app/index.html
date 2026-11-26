@@ -31,7 +31,7 @@
 
   .island {
     position: absolute; top: 0; left: 0; right: 0; margin: 0 auto;
-    height: var(--bar); background: #000; overflow: hidden; isolation: isolate;
+    height: var(--bar); background: #000; overflow: hidden; isolation: isolate; contain: layout paint;
     border-radius: 0 0 14px 14px;
     transition: width 340ms var(--ease-close), height 340ms var(--ease-close), border-radius 340ms var(--ease-close);
   }
@@ -40,10 +40,13 @@
     transition: width 420ms var(--ease-spring-soft), height 420ms var(--ease-spring-soft), border-radius 420ms var(--ease-spring-soft);
   }
 
+  /* Fixed size, centred: if it stretched with the island, the gradient would be
+     repainted on every frame of the open and close animations. */
   .glow {
-    position: absolute; left: 0; right: 0; bottom: 0; height: 130px; z-index: -1; pointer-events: none;
+    position: absolute; left: 50%; bottom: 0; width: var(--open-w, 460px); margin-left: calc(var(--open-w, 460px) / -2);
+    height: 130px; z-index: -1; pointer-events: none;
     background: radial-gradient(90% 100% at 50% 100%, var(--glow), transparent 72%);
-    opacity: 0; transition: opacity 280ms var(--ease-liquid);
+    opacity: 0; transition: opacity 280ms var(--ease-liquid); will-change: opacity;
   }
   .island.open .glow { opacity: 1; }
 
@@ -173,13 +176,15 @@
     content: ''; position: absolute; top: 8px; bottom: 8px; left: 0; width: 3px; border-radius: 2px;
     background: linear-gradient(180deg, #ffe07a, #ff8a2b 55%, #e8261c);
     box-shadow: 0 0 10px 3px rgba(255,122,43,.85), 0 0 22px 6px rgba(232,38,28,.35);
-    opacity: 0; pointer-events: none;
+    opacity: 0; pointer-events: none; will-change: transform, opacity;
     animation: burn-edge 560ms cubic-bezier(.45,0,.35,1) var(--delay, 0ms) forwards;
   }
+  /* Only the clip animates. An animated colour filter here repainted the whole
+     row every frame and made scrolling in other apps stutter during 全部清除. */
   @keyframes burn-away {
-    0%   { clip-path: inset(0 0 0 0); filter: none; }
-    20%  { filter: sepia(.7) saturate(2.6) hue-rotate(-18deg) brightness(1.15); }
-    100% { clip-path: inset(0 0 0 100%); filter: sepia(1) saturate(3) hue-rotate(-28deg) brightness(.9); }
+    0%   { clip-path: inset(0 0 0 0); color: inherit; }
+    20%  { color: #ffb36b; }
+    100% { clip-path: inset(0 0 0 100%); color: #ff8a3d; }
   }
   @keyframes burn-edge {
     0%   { opacity: 0; transform: translateX(0); }
@@ -189,7 +194,7 @@
   }
   .spark {
     position: absolute; width: 3px; height: 3px; border-radius: 50%; pointer-events: none; opacity: 0;
-    background: #ffc04d; box-shadow: 0 0 6px 1px rgba(255,122,43,.9);
+    background: #ffc04d; box-shadow: 0 0 6px 1px rgba(255,122,43,.9); will-change: transform, opacity;
     animation: spark-rise 720ms cubic-bezier(.2,.8,.2,1) forwards;
   }
   @keyframes spark-rise {
@@ -413,7 +418,7 @@
 
   const BRAND = '<div class="brandRow" aria-label="Fire Ring">' +
     '<div class="brandLeft"><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path fill="#e0231c" d="M12 1C13.2 5.5 20 9 20 15.5C20 20 16.4 23 12 23C7.6 23 4 20 4 15.5C4 12.5 5.6 10 7.5 8.5C7.9 10.3 8.7 11.3 9.9 11.8C9.5 7.8 10.4 4 12 1Z"/><path fill="#ff7a2b" d="M12.5 8C13.3 11 17 13 17 17C17 20.2 14.8 22.3 12 22.3C9.2 22.3 7 20.2 7 17.2C7 15.4 7.9 14 9 13C9.3 14.2 9.8 14.9 10.7 15.3C10.5 12.6 11.2 10 12.5 8Z"/><path fill="#ffd84a" d="M12.3 14.5C12.8 16.2 14.7 17.2 14.7 19.2C14.7 20.8 13.5 21.8 12 21.8C10.5 21.8 9.3 20.8 9.3 19.3C9.3 17.7 11.6 16.5 12.3 14.5Z"/></svg><span>Fire Ring</span></div>' +
-    '<div class="brandActs"><button class="brandBtn" data-act="openPanel" title="打开面板（⌥⌘F）">面板</button><button class="brandBtn" data-act="openPreferences" title="打开设置（⇧⌥⌘F）">设置</button></div>' +
+    '<div class="brandActs"><button class="brandBtn" data-act="openPanel" title="打开菜单栏面板">面板</button><button class="brandBtn" data-act="openPreferences" title="打开设置">设置</button></div>' +
     '</div>';
 
   function listHtml(groups) {
