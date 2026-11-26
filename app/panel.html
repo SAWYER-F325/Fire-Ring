@@ -165,19 +165,30 @@
   }
   .quotaPicker[hidden] { display: none; }
   .pickerHead { display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: var(--ink-3); margin-bottom: 6px; }
-  .pickerRow { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 28px; }
-  .pickerRow + .pickerRow { border-top: 1px solid var(--line); }
-  .pickerName { font-size: 12px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .pickerChips { display: flex; gap: 5px; flex: 0 0 auto; }
-  .qChip {
-    display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border: 0; border-radius: 7px;
-    font: inherit; font-size: 11px; cursor: pointer; background: rgba(var(--tint),.07); color: var(--ink-3);
-    transition: background-color 200ms var(--liquid), color 200ms var(--liquid);
+  .pickerRow {
+    position: relative; display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 30px;
+    border-radius: 7px; transition: background-color 180ms var(--liquid), opacity 180ms var(--liquid);
   }
-  .qChip i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .45; }
-  .qChip[aria-pressed="true"] i { opacity: 1; }
-  .qChip.onPanel[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
-  .qChip.onBar[aria-pressed="true"] { background: rgba(255,138,43,.18); color: var(--ember); }
+  .pickerRow + .pickerRow { border-top: 1px solid var(--line); }
+  .pickerRow.dragging { opacity: .4; }
+  .pickerRow.overTop { box-shadow: inset 0 2px 0 var(--accent); }
+  .pickerRow.overBottom { box-shadow: inset 0 -2px 0 var(--accent); }
+  .pickerLeft { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; cursor: grab; }
+  .pickerLeft:active { cursor: grabbing; }
+  .grip { color: var(--ink-3); flex: 0 0 auto; display: block; }
+  .pickerName { font-size: 12px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pickerRight { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+  .ordBtn {
+    width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(var(--tint),.07); color: var(--ink-2);
+    transition: background-color 180ms var(--liquid), color 180ms var(--liquid);
+  }
+  .ordBtn:hover { background: rgba(var(--tint),.14); color: var(--ink); }
+  .ordBtn[disabled] { opacity: .28; pointer-events: none; }
+  .switch.sm { width: 32px; height: 18px; margin-left: 4px; flex: 0 0 auto; }
+  .switch.sm::after { top: 2px; left: 2px; width: 14px; height: 14px; }
+  .switch.sm[aria-checked="true"]::after { transform: translateX(14px); }
 
   /* Grows with its rows. The app moves the glass on the same curve. */
   #items { background: var(--tray); border-radius: 14px; height: 64px; overflow-y: auto; margin: 0 -8px; padding: 0 8px; transition: height 420ms var(--spring); }
@@ -723,14 +734,48 @@
   // Each platform: whether it is connected, then how much of each window is left.
   // Which tools are connected, as the bridge last said; null until it has.
   let providers = null;
-  let quotaShown = null;   // which limits the user chose to see (Settings → General)
-  let menuBarQuota = null; // which limits appear beside the top-right flame icon
+  let quotaShown = null;   // which limits the user chose to see (Settings → General / tray customizer)
+  let quotaOrder = null;   // custom display order of tools in the quota section
   let customizing = false;
   let lastPicker = null;
+  let dragId = null;
   const connected = (id) => !providers || providers[id] === true;
   const quotaOn = (id) => connected(id) && (quotaShown ? quotaShown[id] === true : id === 'codex');
-  const mbQuotaOn = (id) => connected(id) && Boolean(menuBarQuota && menuBarQuota[id] === true);
   const connectedCount = () => (providers ? Object.values(providers).filter(Boolean).length : 1);
+
+  const GRIP_SVG = '<svg class="grip" width="10" height="12" viewBox="0 0 10 12" fill="currentColor" aria-hidden="true"><circle cx="3" cy="2.5" r="1"/><circle cx="7" cy="2.5" r="1"/><circle cx="3" cy="6" r="1"/><circle cx="7" cy="6" r="1"/><circle cx="3" cy="9.5" r="1"/><circle cx="7" cy="9.5" r="1"/></svg>';
+  const UP_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 15l-6-6-6 6"/></svg>';
+  const DOWN_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+
+  function orderedSources() {
+    const byId = new Map(QUOTA_SOURCES);
+    const seen = new Set();
+    const out = [];
+    for (const id of quotaOrder || []) {
+      if (byId.has(id) && !seen.has(id)) { seen.add(id); out.push([id, byId.get(id)]); }
+    }
+    for (const pair of QUOTA_SOURCES) {
+      if (!seen.has(pair[0])) out.push(pair);
+    }
+    return out;
+  }
+
+  async function saveQuotaOrder(nextOrder) {
+    const prev = quotaOrder ? [...quotaOrder] : orderedSources().map(([id]) => id);
+    quotaOrder = [...nextOrder];
+    lastPicker = null;
+    lastQuota = null;
+    render();
+    try {
+      const res = await api('/config?quotaOrder=' + encodeURIComponent(quotaOrder.join(',')), { method: 'POST' });
+      if (!res.ok) throw new Error(String(res.status));
+    } catch {
+      quotaOrder = prev;
+      lastPicker = null;
+      lastQuota = null;
+      render();
+    }
+  }
 
   function renderQuotaPicker() {
     const picker = $('quotaPicker');
@@ -739,19 +784,22 @@
     btn.setAttribute('aria-expanded', String(customizing));
     if (picker.hidden !== !customizing) picker.hidden = !customizing;
     if (!customizing) return;
-    const avail = QUOTA_SOURCES.filter(([id]) => connected(id));
-    const html = '<div class="pickerHead"><span>选择要展示的工具额度</span><span>面板 / 顶栏</span></div>' +
-      avail.map(([id, name]) =>
-        '<div class="pickerRow"><span class="pickerName">' + esc(name) + '</span><div class="pickerChips">' +
-        '<button class="qChip onPanel" type="button" data-pick-panel="' + id + '" aria-pressed="' + quotaOn(id) + '"><i></i>面板</button>' +
-        '<button class="qChip onBar" type="button" data-pick-bar="' + id + '" aria-pressed="' + mbQuotaOn(id) + '"><i></i>顶栏</button>' +
+    const avail = orderedSources().filter(([id]) => connected(id));
+    const html = '<div class="pickerHead"><span>拖拽或点箭头排序，开关控制是否显示</span></div>' +
+      avail.map(([id, name], idx) =>
+        '<div class="pickerRow" draggable="true" data-order-id="' + id + '">' +
+        '<div class="pickerLeft" title="拖动排序">' + GRIP_SVG + '<span class="pickerName">' + esc(name) + '</span></div>' +
+        '<div class="pickerRight">' +
+        '<button class="ordBtn" type="button" data-move="up" data-id="' + id + '" aria-label="上移 ' + esc(name) + '"' + (idx === 0 ? ' disabled' : '') + '>' + UP_SVG + '</button>' +
+        '<button class="ordBtn" type="button" data-move="down" data-id="' + id + '" aria-label="下移 ' + esc(name) + '"' + (idx === avail.length - 1 ? ' disabled' : '') + '>' + DOWN_SVG + '</button>' +
+        '<button class="switch sm" type="button" role="switch" data-pick-panel="' + id + '" aria-label="显示 ' + esc(name) + ' 额度" aria-checked="' + quotaOn(id) + '"></button>' +
         '</div></div>'
       ).join('');
     if (html !== lastPicker) { lastPicker = html; picker.innerHTML = html; }
   }
 
   function renderQuota() {
-    const avail = QUOTA_SOURCES.filter(([id]) => connected(id));
+    const avail = orderedSources().filter(([id]) => connected(id));
     const shown = avail.filter(([id]) => quotaOn(id));
     const section = $('quotaSection');
     const hideSection = avail.length === 0;
@@ -780,7 +828,7 @@
         return '<div class="provider' + (expanded === id ? ' open' : '') + '" role="button" aria-expanded="' + (expanded === id) + '" data-provider="' + id + '"' + (canOpen ? ' title="展开详细用量"' : '') + '><div class="providerHead"><span>' + name + '</span>' +
           '<span class="state"><span class="led' + (mine.length ? ' on' : '') + '"></span>' + text + (canOpen ? CHEVRON : '') + '</span></div>' + body + '</div>';
       }).join('')
-      : (customizing ? '' : '<div class="note">当前未在面板展示额度，点右上角「自定义」勾选</div>');
+      : (customizing ? '' : '<div class="note">当前未展示任何额度，点右上角「自定义」勾选</div>');
     if (html !== lastQuota) { lastQuota = html; $('quota').innerHTML = html; }
   }
 
@@ -791,40 +839,76 @@
   });
 
   $('quotaPicker').addEventListener('click', async (event) => {
-    const panelBtn = event.target.closest('[data-pick-panel]');
-    const barBtn = event.target.closest('[data-pick-bar]');
-    if (!panelBtn && !barBtn) return;
-    if (panelBtn) {
-      const id = panelBtn.dataset.pickPanel;
-      const next = !quotaOn(id);
-      quotaShown = { ...(quotaShown || {}), [id]: next };
-      lastPicker = null;
-      render();
-      try {
-        const res = await api('/config?quota_' + id + '=' + (next ? 1 : 0), { method: 'POST' });
-        if (!res.ok) throw new Error(String(res.status));
-        if (next) loadQuota();
-      } catch {
-        quotaShown = { ...(quotaShown || {}), [id]: !next };
-        lastPicker = null;
-        render();
-      }
+    const moveBtn = event.target.closest('[data-move]');
+    if (moveBtn && !moveBtn.disabled) {
+      const id = moveBtn.dataset.id;
+      const dir = moveBtn.dataset.move === 'up' ? -1 : 1;
+      const all = orderedSources().map(([k]) => k);
+      const vis = all.filter((k) => connected(k));
+      const pos = vis.indexOf(id);
+      const swapWith = vis[pos + dir];
+      if (!swapWith) return;
+      const i = all.indexOf(id);
+      const j = all.indexOf(swapWith);
+      [all[i], all[j]] = [all[j], all[i]];
+      saveQuotaOrder(all);
       return;
     }
-    const id = barBtn.dataset.pickBar;
-    const next = !mbQuotaOn(id);
-    menuBarQuota = { ...(menuBarQuota || {}), [id]: next };
+    const panelBtn = event.target.closest('[data-pick-panel]');
+    if (!panelBtn) return;
+    const id = panelBtn.dataset.pickPanel;
+    const next = !quotaOn(id);
+    quotaShown = { ...(quotaShown || {}), [id]: next };
     lastPicker = null;
     render();
     try {
-      const res = await api('/config?menuBarQuota_' + id + '=' + (next ? 1 : 0), { method: 'POST' });
+      const res = await api('/config?quota_' + id + '=' + (next ? 1 : 0), { method: 'POST' });
       if (!res.ok) throw new Error(String(res.status));
+      if (next) loadQuota();
     } catch {
-      menuBarQuota = { ...(menuBarQuota || {}), [id]: !next };
+      quotaShown = { ...(quotaShown || {}), [id]: !next };
       lastPicker = null;
       render();
     }
   });
+
+  const clearDragMarks = () => $('quotaPicker').querySelectorAll('.pickerRow').forEach((r) => r.classList.remove('overTop', 'overBottom', 'dragging'));
+  $('quotaPicker').addEventListener('dragstart', (event) => {
+    const row = event.target.closest('.pickerRow');
+    if (!row) return;
+    dragId = row.dataset.orderId;
+    row.classList.add('dragging');
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', dragId);
+    }
+  });
+  $('quotaPicker').addEventListener('dragover', (event) => {
+    if (!dragId) return;
+    const row = event.target.closest('.pickerRow');
+    if (!row || row.dataset.orderId === dragId) return;
+    event.preventDefault();
+    $('quotaPicker').querySelectorAll('.pickerRow').forEach((r) => r.classList.remove('overTop', 'overBottom'));
+    const rect = row.getBoundingClientRect();
+    row.classList.add(event.clientY < rect.top + rect.height / 2 ? 'overTop' : 'overBottom');
+  });
+  $('quotaPicker').addEventListener('drop', (event) => {
+    if (!dragId) return;
+    event.preventDefault();
+    const row = event.target.closest('.pickerRow');
+    const targetId = row?.dataset.orderId;
+    const after = row?.classList.contains('overBottom');
+    const sourceId = dragId;
+    dragId = null;
+    clearDragMarks();
+    if (!targetId || targetId === sourceId) return;
+    const all = orderedSources().map(([k]) => k).filter((k) => k !== sourceId);
+    const idx = all.indexOf(targetId);
+    if (idx < 0) return;
+    all.splice(after ? idx + 1 : idx, 0, sourceId);
+    saveQuotaOrder(all);
+  });
+  $('quotaPicker').addEventListener('dragend', () => { dragId = null; clearDragMarks(); });
 
   // Clicking a platform opens its details in place; clicking again folds them.
   $('quota').addEventListener('click', (event) => {
@@ -1019,7 +1103,7 @@
         sessions = Array.isArray(data.sessions) ? data.sessions : [];
         if (data.providers) providers = data.providers;
         if (data.quotaShown) quotaShown = data.quotaShown;
-        if (data.menuBarQuota) menuBarQuota = data.menuBarQuota;
+        if (Array.isArray(data.quotaOrder)) quotaOrder = data.quotaOrder;
         document.documentElement.dataset.theme = data.theme || 'dark';
         // Completions cleared elsewhere burn away here too rather than vanish.
         const gone = finishedRows().filter((row) => was.get(row.dataset.id) === 'finished'

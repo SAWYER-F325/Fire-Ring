@@ -11,7 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { latestCodexFiles } from './providers.mjs';
 import { windowOf } from './window.mjs';
-import { PROVIDER_IDS, readConfig } from './config.mjs';
+import { readConfig } from './config.mjs';
 import { STATUSLINE_FILE } from './statusline.mjs';
 import { deepseekBalance } from './deepseek-balance.mjs';
 
@@ -226,80 +226,13 @@ export function connectedQuota(now = Date.now()) {
   ].filter(Boolean);
 }
 
-/** The limits the menu-bar panel shows: connected tools the user chose to see. */
+/** The limits the menu-bar panel shows: connected tools the user chose to see, in their chosen order. */
 export function readQuota(now = Date.now()) {
-  const { quota, providers } = readConfig();
+  const { quota, quotaOrder = [], providers } = readConfig();
   const shown = connectedQuota(now).filter((q) => quota[q.id] === true);
   // The balance is asked over the network only while it is shown.
   if (providers.dsh && quota.dsh) shown.push(readDeepSeekQuota(now));
+  const rank = new Map(quotaOrder.map((id, i) => [id, i]));
+  shown.sort((a, b) => (rank.get(a.id) ?? 999) - (rank.get(b.id) ?? 999));
   return shown;
-}
-
-const BAR_LABEL_SINGLE = {
-  claude: 'Claude',
-  codex: 'Codex',
-  dsh: 'DeepSeek',
-  antigravity: 'Antigravity',
-  cursor: 'Cursor',
-  grok: 'Grok',
-};
-const BAR_LABEL_COMPACT = {
-  claude: 'C',
-  codex: 'X',
-  dsh: 'DS',
-  antigravity: 'AG',
-  cursor: 'Cu',
-  grok: 'G',
-};
-const PLAN_SHORT = {
-  free: 'Free',
-  pro: 'Pro',
-  pro_plus: 'Pro+',
-  ultra: 'Ultra',
-  business: 'Biz',
-  enterprise: 'Ent',
-};
-
-/** Formats one quota entry as a short status-bar readout (percentage, balance, or local usage). */
-export function formatMenuBarItem(q, compact = false) {
-  if (!q) return '';
-  const label = (compact ? BAR_LABEL_COMPACT[q.id] : BAR_LABEL_SINGLE[q.id]) || q.name || q.id;
-  if (Array.isArray(q.windows) && q.windows.length) {
-    const tightest = q.windows.reduce((a, b) => (b.leftPercent < a.leftPercent ? b : a));
-    return `${label} ${Math.round(tightest.leftPercent)}%`;
-  }
-  if (q.kind === 'balance' && Array.isArray(q.balances) && q.balances.length) {
-    const b = q.balances[0];
-    const sym = b.currency === 'CNY' ? '¥' : b.currency === 'USD' ? '$' : b.currency + ' ';
-    const amount = Number(b.total);
-    return `${label} ${sym}${amount >= 100 ? Math.round(amount) : amount.toFixed(1)}`;
-  }
-  const u = q.localUsage;
-  if (u && u.fiveHour && u.fiveHour.messages) {
-    const unit = u.unit === 'sessions' ? '会话' : '次';
-    return `${label} ${u.fiveHour.messages}${unit}`;
-  }
-  if (u && u.today && u.today.messages) {
-    const unit = u.unit === 'sessions' ? '会话' : '次';
-    return `${label} ${u.today.messages}${unit}`;
-  }
-  if (q.plan) {
-    const p = PLAN_SHORT[String(q.plan).toLowerCase()] || String(q.plan);
-    return `${label} ${p}`;
-  }
-  return `${label} —`;
-}
-
-/** Compact live quota readout shown next to the macOS menu-bar flame icon. */
-export function menuBarQuotaText(now = Date.now()) {
-  const { providers, menuBarQuota = {} } = readConfig();
-  const selected = PROVIDER_IDS.filter((id) => providers[id] === true && menuBarQuota[id] === true);
-  if (!selected.length) return '';
-  const byId = new Map(connectedQuota(now).map((q) => [q.id, q]));
-  if (selected.includes('dsh')) byId.set('dsh', readDeepSeekQuota(now));
-  const compact = selected.length > 1;
-  return selected
-    .map((id) => formatMenuBarItem(byId.get(id) || { id, name: BAR_LABEL_SINGLE[id] || id, windows: [] }, compact))
-    .filter(Boolean)
-    .join('  ');
 }

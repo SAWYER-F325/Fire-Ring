@@ -296,9 +296,6 @@
   .chip i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: .5; }
   .chip[aria-pressed="true"].wait { background: rgba(var(--waiting-rgb),.14); color: var(--waiting); }
   .chip[aria-pressed="true"].done { background: rgba(var(--done-rgb),.14); color: var(--copper); }
-  .chip[aria-pressed="true"].panel { background: var(--accent); color: var(--on-accent); }
-  .chip[aria-pressed="true"].bar { background: rgba(255,138,43,.16); color: var(--ember); }
-  .chip[disabled] { opacity: .4; pointer-events: none; }
   .chip[aria-pressed="true"] i { opacity: 1; }
   .money { display: flex; align-items: center; gap: 6px; }
   .money input { width: 70px; flex: 0 0 auto; text-align: right; font-family: inherit; font-size: 13px; }
@@ -509,7 +506,6 @@
       </div>
       <h2>菜单栏显示额度</h2>
       <div class="card" id="quotaSwitches"></div>
-      <p class="note2">「面板」控制点开火苗后的详细卡片；「顶栏图标」把实时额度直接显示在右上角火苗旁，也可在火苗面板点「自定义」或右键火苗图标随时勾选。</p>
       <h2>启动与日志</h2>
       <div class="card">
         <div class="row">
@@ -904,33 +900,27 @@
   ];
   function renderQuotaSwitches() {
     const shown = info.config.quota || {};
-    const barShown = info.config.menuBarQuota || {};
     $('quotaSwitches').innerHTML = QUOTA_ROWS.map(([id, name, sub]) => {
       const tool = info.tools.find((t) => t.id === id);
       const connected = Boolean(tool && tool.connected);
-      const dis = connected ? '' : ' disabled';
       return '<div class="row"><div class="text"><div class="title" id="q-' + id + '">' + esc(name) + '</div><div class="sub">' +
         esc(connected ? sub : '先在「连接」里连接 ' + name) + '</div></div>' +
-        '<div class="chips">' +
-        '<button class="chip panel" type="button" data-quota="' + id + '" aria-pressed="' + (connected && shown[id] === true) + '"' + dis + '><i></i>面板</button>' +
-        '<button class="chip bar" type="button" data-mb-quota="' + id + '" aria-pressed="' + (connected && barShown[id] === true) + '"' + dis + '><i></i>顶栏图标</button>' +
-        '</div></div>';
+        '<button class="switch" data-quota="' + id + '" role="switch" aria-labelledby="q-' + id + '" aria-checked="' + (connected && shown[id] === true) + '"' +
+        (connected ? '' : ' disabled style="opacity:.4"') + '></button></div>';
     }).join('');
   }
   document.addEventListener('click', async (event) => {
-    const el = event.target.closest('[data-quota], [data-mb-quota]');
+    const el = event.target.closest('[data-quota]');
     if (!el || el.disabled) return;
-    const isBar = 'mbQuota' in el.dataset;
-    const id = isBar ? el.dataset.mbQuota : el.dataset.quota;
-    const next = el.getAttribute('aria-pressed') !== 'true';
-    el.setAttribute('aria-pressed', String(next));
+    const next = el.getAttribute('aria-checked') !== 'true';
+    el.setAttribute('aria-checked', String(next));
     try {
-      const r = await post('/config?' + (isBar ? 'menuBarQuota_' : 'quota_') + id + '=' + (next ? 1 : 0));
+      const r = await post('/config?quota_' + el.dataset.quota + '=' + (next ? 1 : 0));
       const body = await r.json();
       if (!r.ok) throw new Error(body.error || r.status);
       info.config = body.config;
     } catch {
-      el.setAttribute('aria-pressed', String(!next));
+      el.setAttribute('aria-checked', String(!next));
     }
   });
 

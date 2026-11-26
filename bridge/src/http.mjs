@@ -10,7 +10,7 @@ import http from 'node:http';
 import { readSessions } from './sessions.mjs';
 import { readCodexSessions, readClaudeSessions, primeCodexTitles } from './providers.mjs';
 import { createTracker, openedSince, statusOf } from './status.mjs';
-import { exhaustedProviders, menuBarQuotaText, readCodexQuota, readQuota } from './quota.mjs';
+import { exhaustedProviders, readCodexQuota, readQuota } from './quota.mjs';
 import { createAlerts } from './alerts.mjs';
 import { dshIsFrontmost } from './focus.mjs';
 import { currentSessionId } from './store.mjs';
@@ -139,20 +139,6 @@ export function startStateServer(port = STATE_PORT) {
   let revision = 0;
   let fingerprint = '';
   const waiters = new Set();
-  let lastMenuBarAt = 0;
-  let currentMenuBarText = '';
-
-  function refreshMenuBarText(force = false) {
-    const now = Date.now();
-    if (!force && now - lastMenuBarAt < 5000) return currentMenuBarText;
-    lastMenuBarAt = now;
-    try {
-      currentMenuBarText = menuBarQuotaText(now);
-    } catch {
-      /* keep last text */
-    }
-    return currentMenuBarText;
-  }
 
   // The surfaces long-poll: a held request is answered the moment anything they
   // show changes, so a change never waits for the next poll.
@@ -161,8 +147,8 @@ export function startStateServer(port = STATE_PORT) {
       .map((s) => [s.id, s.status, s.title, s.project, s.finishedAt, s.lastPromptAt, s.open?.value])
       .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
     const cfg = readConfig();
-    const next = JSON.stringify([notchPrefs(state), updateBadge(), cfg.providers, cfg.quota, cfg.menuBarQuota,
-      currentMenuBarText, cfg.theme, alerts.latest().seq, demo.seq, shown]);
+    const next = JSON.stringify([notchPrefs(state), updateBadge(), cfg.providers, cfg.quota, cfg.quotaOrder, cfg.theme,
+      alerts.latest().seq, demo.seq, shown]);
     if (next === fingerprint) return;
     fingerprint = next;
     revision += 1;
@@ -264,7 +250,6 @@ export function startStateServer(port = STATE_PORT) {
     decorate();
     logChanges();
     try { alerts.observe(snapshot); } catch (error) { console.error('alerts failed:', error.message); }
-    refreshMenuBarText(false);
     publish();
   }
 
@@ -402,8 +387,7 @@ export function startStateServer(port = STATE_PORT) {
           update: updateBadge(),
           providers: readConfig().providers,
           quotaShown: readConfig().quota,
-          menuBarQuota: readConfig().menuBarQuota,
-          menuBarText: currentMenuBarText,
+          quotaOrder: readConfig().quotaOrder,
           theme: readConfig().theme,
           at: Date.now(),
         });
@@ -557,7 +541,6 @@ export function startStateServer(port = STATE_PORT) {
           fullscreen: 'hide' }), finishedAt: state.finishedAt };
         writeState(state);
         console.log('[ui] settings reset to defaults');
-        refreshMenuBarText(true);
         publish();
         return json({ ok: true, config, notch: notchPrefs(state) });
       }
@@ -586,8 +569,10 @@ export function startStateServer(port = STATE_PORT) {
         for (const id of PROVIDER_IDS) {
           const value = param('quota_' + id);
           if (value !== null) patch.quota = { ...(patch.quota || {}), [id]: value !== '0' };
-          const barValue = param('menuBarQuota_' + id);
-          if (barValue !== null) patch.menuBarQuota = { ...(patch.menuBarQuota || {}), [id]: barValue !== '0' };
+        }
+        const orderParam = param('quotaOrder');
+        if (orderParam !== null) {
+          patch.quotaOrder = orderParam.split(',').map((s) => s.trim()).filter(Boolean);
         }
         if (param('onboarded') !== null) patch.onboarded = param('onboarded') !== '0';
         if (param('loginPrompt') !== null) patch.loginPrompt = param('loginPrompt') === 'never' ? 'never' : 'ask';
@@ -604,11 +589,8 @@ export function startStateServer(port = STATE_PORT) {
         if (patch.proxy) {
           console.log('[config] network route: ' + currentRoute().label);
         }
-        if (patch.quota || patch.menuBarQuota || patch.theme) {
-          refreshMenuBarText(true);
-          publish();   // the panel and status bar follow at once
-        }
-        return json({ ok: true, config, route: currentRoute(), menuBarText: currentMenuBarText });
+        if (patch.quota || patch.quotaOrder || patch.theme) publish();   // the panel follows at once
+        return json({ ok: true, config, route: currentRoute() });
       }
       case '/update/check':
         checkForUpdate().finally(() => publish());
@@ -631,7 +613,6 @@ export function startStateServer(port = STATE_PORT) {
         }
         const config = writeConfig({ providers: { [id]: on } });
         console.log('[setup] ' + id + (on ? ' connected' : ' disconnected'));
-        refreshMenuBarText(true);
         refresh();
         return json({ ok: true, providers: config.providers, plugin });
       }

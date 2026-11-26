@@ -685,14 +685,7 @@
     render();
   };
 
-  let lastStatusBarText = null;
-
   function apply(data) {
-    const mbText = typeof data.menuBarText === 'string' ? data.menuBarText : '';
-    if (mbText !== lastStatusBarText) {
-      lastStatusBarText = mbText;
-      send({ kind: 'statusBarText', text: mbText });
-    }
     forwardAlerts(data.alerts);
     const enabled = data.islandEnabled !== false;
     if (enabled !== islandEnabled) {
