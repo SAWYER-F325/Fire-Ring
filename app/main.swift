@@ -158,7 +158,6 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
 
         setupStatusItem()
         hotKey = GlobalHotKey(
-            onPanel: { [weak self] in self?.togglePanelFromShortcut() },
             onPreferences: { [weak self] in
                 self?.settings.close()
                 self?.preferences.show()
@@ -571,7 +570,7 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
         settings.toggle(relativeTo: button)
     }
 
-    private func togglePanelFromShortcut() {
+    private func togglePanelFromNotch() {
         if let button = statusItem?.button {
             settings.toggle(relativeTo: button)
         } else {
@@ -745,7 +744,7 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
         case "closePanel":
             settings.close()
         case "openPanel":
-            togglePanelFromShortcut()
+            togglePanelFromNotch()
         case "loginPrompt":
             LoginItem.answer(body["choice"] as? String ?? "")
         case "openPreferences":
@@ -1173,15 +1172,11 @@ final class AcceptsFirstMouseWebView: WKWebView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
-/// Global shortcuts the user records in Settings (no Accessibility permission
-/// needed). None are set by default: a global shortcut takes the same keys away
-/// from every other app.
+/// The global shortcut that opens Settings, recorded by the user in Settings
+/// (no Accessibility permission needed), with a switch to turn it off without
+/// forgetting it. None is set by default: a global shortcut takes the same keys
+/// away from every other app.
 final class GlobalHotKey {
-    enum Action: String, CaseIterable {
-        case panel, prefs
-        var id: UInt32 { self == .panel ? 1 : 2 }
-    }
-
     struct Combo: Codable {
         let keyCode: UInt32
         let mods: UInt32     // Carbon modifier mask
@@ -1189,49 +1184,68 @@ final class GlobalHotKey {
     }
 
     static let changed = Notification.Name("FireRing.globalHotKeysChanged")
-    private static func key(_ a: Action) -> String { "hotKey." + a.rawValue }
+    private static let comboKey = "hotKey.prefs"
+    private static let enabledKey = "hotKey.enabled"
 
-    static func combo(_ a: Action) -> Combo? {
-        guard let data = UserDefaults.standard.data(forKey: key(a)) else { return nil }
+    static var combo: Combo? {
+        guard let data = UserDefaults.standard.data(forKey: comboKey) else { return nil }
         return try? JSONDecoder().decode(Combo.self, from: data)
     }
 
-    /// Saves (or clears, with nil) one shortcut and re-registers. Returns why it could not be used.
-    static func set(_ a: Action, _ combo: Combo?) -> String? {
-        if let combo, let data = try? JSONEncoder().encode(combo) { UserDefaults.standard.set(data, forKey: key(a)) }
-        else { UserDefaults.standard.removeObject(forKey: key(a)) }
-        var errors: [Action: String] = [:]
-        NotificationCenter.default.post(name: changed, object: nil, userInfo: ["reply": { (e: [Action: String]) in errors = e }])
-        return errors[a]
+    static var isEnabled: Bool { UserDefaults.standard.bool(forKey: enabledKey) }
+
+    /// Re-registers and returns why the shortcut could not be used, if it could not.
+    private static func apply() -> String? {
+        var error: String?
+        NotificationCenter.default.post(name: changed, object: nil, userInfo: ["reply": { (e: String?) in error = e }])
+        return error
     }
 
-    /// What Settings shows: each action's label, or null.
-    static func state() -> [String: Any] {
-        var out: [String: Any] = [:]
-        for a in Action.allCases { out[a.rawValue] = combo(a)?.label ?? NSNull() }
-        return out
-    }
-
-    /// 0.2.3 测试版只有一个开关（⌥⌘F / ⇧⌥⌘F）；打开过的，换成同样的两个组合。
-    static func migrate() {
-        let old = "globalHotKeys"
-        guard UserDefaults.standard.object(forKey: old) != nil else { return }
-        if UserDefaults.standard.bool(forKey: old), combo(.panel) == nil, combo(.prefs) == nil {
-            let f = UInt32(kVK_ANSI_F)
-            _ = try? UserDefaults.standard.set(JSONEncoder().encode(Combo(keyCode: f, mods: UInt32(optionKey | cmdKey), label: "⌥⌘F")), forKey: key(.panel))
-            _ = try? UserDefaults.standard.set(JSONEncoder().encode(Combo(keyCode: f, mods: UInt32(shiftKey | optionKey | cmdKey), label: "⇧⌥⌘F")), forKey: key(.prefs))
+    /// Saves (or clears, with nil) the shortcut. A new one is switched on.
+    static func set(_ combo: Combo?) -> String? {
+        if let combo, let data = try? JSONEncoder().encode(combo) {
+            UserDefaults.standard.set(data, forKey: comboKey)
+            UserDefaults.standard.set(true, forKey: enabledKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: comboKey)
+            UserDefaults.standard.set(false, forKey: enabledKey)
         }
-        UserDefaults.standard.removeObject(forKey: old)
+        return apply()
+    }
+
+    static func setEnabled(_ on: Bool) -> String? {
+        UserDefaults.standard.set(on && combo != nil, forKey: enabledKey)
+        return apply()
+    }
+
+    /// What Settings shows.
+    static func state() -> [String: Any] {
+        ["prefs": combo?.label ?? NSNull(), "enabled": isEnabled && combo != nil]
+    }
+
+    /// Earlier builds: one on/off switch, then a shortcut for the panel too.
+    /// The panel shortcut is gone; a Settings shortcut someone had stays on.
+    static func migrate() {
+        let defaults = UserDefaults.standard
+        let old = "globalHotKeys"
+        if defaults.object(forKey: old) != nil {
+            if defaults.bool(forKey: old), combo == nil {
+                let c = Combo(keyCode: UInt32(kVK_ANSI_F), mods: UInt32(shiftKey | optionKey | cmdKey), label: "⇧⌥⌘F")
+                if let data = try? JSONEncoder().encode(c) { defaults.set(data, forKey: comboKey) }
+            }
+            defaults.removeObject(forKey: old)
+        }
+        defaults.removeObject(forKey: "hotKey.panel")
+        if defaults.object(forKey: enabledKey) == nil { defaults.set(combo != nil, forKey: enabledKey) }
     }
 
     // MARK: Recording
 
     private static var monitor: Any?
-    static var isRecording: Bool { monitor != nil }
 
     /// Waits for the next key press in Fire Ring's own windows. Esc cancels.
-    /// The shortcuts are paused meanwhile, so pressing a current one records it.
-    static func record(_ a: Action, done: @escaping (_ error: String?) -> Void) {
+    /// The shortcut is paused meanwhile, so pressing the current one records it.
+    static func record(done: @escaping (_ error: String?) -> Void) {
         stopRecording()
         NotificationCenter.default.post(name: changed, object: nil, userInfo: ["pause": true])
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
@@ -1253,7 +1267,7 @@ final class GlobalHotKey {
             if flags.contains(.command) { mods |= UInt32(cmdKey); label += "⌘" }
             label += keyName(event)
             stopRecording(resume: false)
-            done(set(a, Combo(keyCode: UInt32(event.keyCode), mods: mods, label: label)))
+            done(set(Combo(keyCode: UInt32(event.keyCode), mods: mods, label: label)))
             return nil
         }
     }
@@ -1282,22 +1296,22 @@ final class GlobalHotKey {
     // MARK: Registration
 
     private static let signature: OSType = 0x46524E47 // 'FRNG'
-    private var refs: [Action: EventHotKeyRef] = [:]
+    private var ref: EventHotKeyRef?
     private var handlerRef: EventHandlerRef?
-    private let handlers: [Action: () -> Void]
+    private let onPreferences: () -> Void
     private var observer: NSObjectProtocol?
 
-    init(onPanel: @escaping () -> Void, onPreferences: @escaping () -> Void) {
-        handlers = [.panel: onPanel, .prefs: onPreferences]
+    init(onPreferences: @escaping () -> Void) {
+        self.onPreferences = onPreferences
         Self.migrate()
         installHandler()
-        _ = registerAll()
+        _ = register()
         observer = NotificationCenter.default.addObserver(forName: Self.changed, object: nil, queue: nil) { [weak self] note in
             guard let self else { return }
-            self.unregisterAll()
+            self.unregisterKey()
             if note.userInfo?["pause"] as? Bool == true { return }
-            let errors = self.registerAll()
-            (note.userInfo?["reply"] as? ([Action: String]) -> Void)?(errors)
+            let error = self.register()
+            (note.userInfo?["reply"] as? (String?) -> Void)?(error)
         }
     }
 
@@ -1311,38 +1325,29 @@ final class GlobalHotKey {
                                            nil, MemoryLayout<EventHotKeyID>.size, nil, &hkID)
             guard status == noErr, hkID.signature == GlobalHotKey.signature else { return noErr }
             let target = Unmanaged<GlobalHotKey>.fromOpaque(userData).takeUnretainedValue()
-            DispatchQueue.main.async {
-                if let action = Action.allCases.first(where: { $0.id == hkID.id }) { target.handlers[action]?() }
-            }
+            DispatchQueue.main.async { target.onPreferences() }
             return noErr
         }
         InstallEventHandler(GetApplicationEventTarget(), callback, 1, &eventType, selfPtr, &handlerRef)
     }
 
-    /// Registers every recorded shortcut; returns the ones another app already holds.
-    private func registerAll() -> [Action: String] {
-        var errors: [Action: String] = [:]
-        var seen: [String: Action] = [:]
-        for a in Action.allCases {
-            guard let c = Self.combo(a) else { continue }
-            let sig = "\(c.keyCode):\(c.mods)"
-            if seen[sig] != nil { errors[a] = c.label + " 已经用在另一项上了"; continue }
-            seen[sig] = a
-            var ref: EventHotKeyRef?
-            let status = RegisterEventHotKey(c.keyCode, c.mods, EventHotKeyID(signature: Self.signature, id: a.id),
-                                             GetApplicationEventTarget(), 0, &ref)
-            if status == noErr, let ref { refs[a] = ref } else { errors[a] = c.label + " 已被别的软件占用" }
-        }
-        return errors
+    /// Registers the shortcut when it is set and switched on; returns why it could not be.
+    private func register() -> String? {
+        guard Self.isEnabled, let c = Self.combo else { return nil }
+        let status = RegisterEventHotKey(c.keyCode, c.mods, EventHotKeyID(signature: Self.signature, id: 2),
+                                         GetApplicationEventTarget(), 0, &ref)
+        if status == noErr { return nil }
+        ref = nil
+        return c.label + " 已被别的软件占用"
     }
 
-    private func unregisterAll() {
-        for ref in refs.values { UnregisterEventHotKey(ref) }
-        refs = [:]
+    private func unregisterKey() {
+        if let ref { UnregisterEventHotKey(ref) }
+        ref = nil
     }
 
     func unregister() {
-        unregisterAll()
+        unregisterKey()
         if let h = handlerRef { RemoveEventHandler(h); handlerRef = nil }
     }
 

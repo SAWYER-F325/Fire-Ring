@@ -178,6 +178,7 @@
   .btn.small { height: 26px; padding: 0 10px; font-size: 12px; border-radius: 8px; }
   .actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
+  .switch:disabled { opacity: .4; cursor: default; }
   .switch {
     position: relative; flex: 0 0 auto; width: 40px; height: 24px; padding: 0; border: 0; border-radius: 999px; cursor: pointer;
     background: rgba(var(--tint),.18); transition: background-color 280ms var(--liquid);
@@ -503,17 +504,13 @@
       <h2>快捷键</h2>
       <div class="card">
         <div class="row">
-          <div class="text"><div class="title">打开菜单栏面板</div><div class="sub" id="hk-sub-panel"></div></div>
-          <button class="btn small ghost" data-hk-clear="panel" hidden>清除</button>
-          <button class="btn small hk" data-hk="panel"></button>
-        </div>
-        <div class="row">
-          <div class="text"><div class="title">打开设置</div><div class="sub" id="hk-sub-prefs"></div></div>
-          <button class="btn small ghost" data-hk-clear="prefs" hidden>清除</button>
-          <button class="btn small hk" data-hk="prefs"></button>
+          <div class="text"><div class="title" id="hkLabel">打开设置</div><div class="sub" id="hk-sub"></div></div>
+          <button class="btn small ghost" id="hkClear" hidden>清除</button>
+          <button class="btn small" id="hkRecord"></button>
+          <button class="switch" id="hkEnabled" role="switch" aria-checked="false" aria-labelledby="hkLabel"></button>
         </div>
       </div>
-      <div class="sub" style="margin:6px 4px 0;color:var(--ink-3);font-size:12px">点右边的按钮，再按下想用的组合键（要带 ⌘、⌥ 或 ⌃），按 Esc 取消。设好后在任何软件里都能用，同时会占用其他软件里相同的快捷键。</div>
+      <div class="sub" style="margin:6px 4px 0;color:var(--ink-3);font-size:12px">点「设置」后按下想用的组合键（要带 ⌘、⌥ 或 ⌃），按 Esc 取消。打开开关后在任何软件里都能用，同时会占用其他软件里相同的快捷键。</div>
       <h2>菜单栏显示额度</h2>
       <div class="card" id="quotaSwitches"></div>
       <h2>启动与日志</h2>
@@ -914,33 +911,32 @@
       : state.error ? esc('没能设置：' + state.error) : '开机后 Fire Ring 自己出现在菜单栏';
   }
   renderLogin(native);
-  // Global shortcuts: recorded natively (so ⌘ combinations reach it), shown here.
+  // The Settings shortcut: recorded natively (so ⌘ combinations reach it), shown here.
   let hkState = native.hotKeys || {};
-  let hkError = {};
-  let hkRecording = null;
+  let hkError = '';
+  let hkRecording = false;
   function renderHotKeys() {
-    for (const a of ['panel', 'prefs']) {
-      const label = hkState[a];
-      const btn = document.querySelector('[data-hk="' + a + '"]');
-      btn.textContent = hkRecording === a ? '请按下组合键…' : (label || '设置');
-      btn.classList.toggle('primary', hkRecording === a);
-      document.querySelector('[data-hk-clear="' + a + '"]').hidden = !label || hkRecording === a;
-      $('hk-sub-' + a).textContent = hkError[a] ? hkError[a] : label ? '已设置' : '未设置';
-    }
+    const label = hkState.prefs;
+    $('hkRecord').textContent = hkRecording ? '请按下组合键…' : (label || '设置');
+    $('hkRecord').classList.toggle('primary', hkRecording);
+    $('hkClear').hidden = !label || hkRecording;
+    $('hkEnabled').setAttribute('aria-checked', String(Boolean(hkState.enabled)));
+    $('hkEnabled').disabled = !label;
+    $('hk-sub').textContent = hkError ? hkError
+      : !label ? '还没设置快捷键'
+      : hkState.enabled ? '已开启，在任何软件里按 ' + label + ' 都能打开' : '已关闭，' + label + ' 暂时不起作用';
   }
   renderHotKeys();
-  document.addEventListener('click', (e) => {
-    const rec = e.target.closest('[data-hk]');
-    if (rec) {
-      const a = rec.dataset.hk;
-      hkError = {};
-      if (hkRecording === a) { hkRecording = null; send({ kind: 'hotKeyCancel' }); }
-      else { hkRecording = a; send({ kind: 'hotKeyRecord', action: a }); }
-      renderHotKeys();
-      return;
-    }
-    const clear = e.target.closest('[data-hk-clear]');
-    if (clear) send({ kind: 'hotKeyClear', action: clear.dataset.hkClear });
+  $('hkRecord').addEventListener('click', () => {
+    hkError = '';
+    hkRecording = !hkRecording;
+    send({ kind: hkRecording ? 'hotKeyRecord' : 'hotKeyCancel' });
+    renderHotKeys();
+  });
+  $('hkClear').addEventListener('click', () => send({ kind: 'hotKeyClear' }));
+  $('hkEnabled').addEventListener('click', () => {
+    if ($('hkEnabled').disabled) return;
+    send({ kind: 'hotKeyEnabled', on: $('hkEnabled').getAttribute('aria-checked') !== 'true' });
   });
   $('loginItem').addEventListener('click', () => send({ kind: 'loginItem', on: $('loginItem').getAttribute('aria-checked') !== 'true' }));
   document.addEventListener('click', (e) => { if (e.target.id === 'openLoginSettings') send({ kind: 'openLoginItemSettings' }); });
@@ -949,7 +945,7 @@
 
   window.__native = (msg) => {
     if ('loginItem' in msg) renderLogin(msg);
-    if ('hotKeys' in msg) { hkState = msg.hotKeys || {}; hkError = msg.hotKeyError || {}; hkRecording = null; renderHotKeys(); }
+    if ('hotKeys' in msg) { hkState = msg.hotKeys || {}; hkError = msg.hotKeyError || ''; hkRecording = false; renderHotKeys(); }
     if ('notify' in msg) onPermission(msg.notify, msg.notifyError);
     if ('diagName' in msg || 'diagError' in msg) onDiagnostics(msg);
     if (msg.installError) $('updErr').textContent = msg.installError;

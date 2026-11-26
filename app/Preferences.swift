@@ -192,18 +192,20 @@ final class PreferencesWindow: NSObject, NSWindowDelegate, WKScriptMessageHandle
             let error = LoginItem.answer(body["choice"] as? String ?? "")
             reply(["loginItem": LoginItem.enabled, "loginItemNeedsApproval": LoginItem.needsApproval, "error": error ?? NSNull()])
         case "hotKeyRecord":
-            guard let action = GlobalHotKey.Action(rawValue: body["action"] as? String ?? "") else { return }
-            GlobalHotKey.record(action) { [weak self] error in
-                self?.reply(["hotKeys": GlobalHotKey.state(), "hotKeyError": error.map { [action.rawValue: $0] } ?? NSNull()])
+            GlobalHotKey.record { [weak self] error in
+                self?.reply(["hotKeys": GlobalHotKey.state(), "hotKeyError": error ?? NSNull()])
             }
         case "hotKeyCancel":
             GlobalHotKey.stopRecording()
             reply(["hotKeys": GlobalHotKey.state(), "hotKeyError": NSNull()])
         case "hotKeyClear":
-            guard let action = GlobalHotKey.Action(rawValue: body["action"] as? String ?? "") else { return }
             GlobalHotKey.stopRecording()
-            _ = GlobalHotKey.set(action, nil)
+            _ = GlobalHotKey.set(nil)
             reply(["hotKeys": GlobalHotKey.state(), "hotKeyError": NSNull()])
+        case "hotKeyEnabled":
+            GlobalHotKey.stopRecording()
+            let error = GlobalHotKey.setEnabled(body["on"] as? Bool ?? false)
+            reply(["hotKeys": GlobalHotKey.state(), "hotKeyError": error ?? NSNull()])
         case "openLoginItemSettings":
             SMAppService.openSystemSettingsLoginItems()
         case "copy":
