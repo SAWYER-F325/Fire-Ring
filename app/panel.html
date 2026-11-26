@@ -160,33 +160,29 @@
   .headAct:hover { background: rgba(var(--tint),.08); color: var(--ink); }
   .headAct[aria-expanded="true"] { color: var(--accent); }
   .quotaPicker {
-    margin-bottom: 8px; padding: 8px 10px; border-radius: 12px;
+    margin-bottom: 8px; padding: 4px 10px; border-radius: 12px;
     background: var(--tile); box-shadow: var(--tile-shadow), inset 0 0 0 .5px var(--line);
   }
   .quotaPicker[hidden] { display: none; }
-  .pickerHead { display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: var(--ink-3); margin-bottom: 6px; }
   .pickerRow {
-    position: relative; display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 30px;
-    border-radius: 7px; transition: background-color 180ms var(--liquid), opacity 180ms var(--liquid);
+    position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 32px;
+    border-radius: 7px; touch-action: none;
+    transition: background-color 180ms var(--liquid), opacity 180ms var(--liquid);
   }
   .pickerRow + .pickerRow { border-top: 1px solid var(--line); }
-  .pickerRow.dragging { opacity: .4; }
+  .pickerRow.dragging {
+    z-index: 2; opacity: .92; background: var(--tile-hover);
+    box-shadow: 0 6px 18px var(--shadow), inset 0 0 0 .5px var(--line);
+    transition: none;
+  }
   .pickerRow.overTop { box-shadow: inset 0 2px 0 var(--accent); }
   .pickerRow.overBottom { box-shadow: inset 0 -2px 0 var(--accent); }
-  .pickerLeft { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; cursor: grab; }
+  .pickerLeft { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; height: 100%; cursor: grab; }
   .pickerLeft:active { cursor: grabbing; }
-  .grip { color: var(--ink-3); flex: 0 0 auto; display: block; }
+  .grip { color: var(--ink-3); flex: 0 0 auto; display: block; opacity: .75; }
+  .pickerRow:hover .grip { color: var(--ink-2); opacity: 1; }
   .pickerName { font-size: 12px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .pickerRight { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
-  .ordBtn {
-    width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; cursor: pointer;
-    display: inline-flex; align-items: center; justify-content: center;
-    background: rgba(var(--tint),.07); color: var(--ink-2);
-    transition: background-color 180ms var(--liquid), color 180ms var(--liquid);
-  }
-  .ordBtn:hover { background: rgba(var(--tint),.14); color: var(--ink); }
-  .ordBtn[disabled] { opacity: .28; pointer-events: none; }
-  .switch.sm { width: 32px; height: 18px; margin-left: 4px; flex: 0 0 auto; }
+  .switch.sm { width: 32px; height: 18px; flex: 0 0 auto; }
   .switch.sm::after { top: 2px; left: 2px; width: 14px; height: 14px; }
   .switch.sm[aria-checked="true"]::after { transform: translateX(14px); }
 
@@ -738,14 +734,11 @@
   let quotaOrder = null;   // custom display order of tools in the quota section
   let customizing = false;
   let lastPicker = null;
-  let dragId = null;
   const connected = (id) => !providers || providers[id] === true;
   const quotaOn = (id) => connected(id) && (quotaShown ? quotaShown[id] === true : id === 'codex');
   const connectedCount = () => (providers ? Object.values(providers).filter(Boolean).length : 1);
 
   const GRIP_SVG = '<svg class="grip" width="10" height="12" viewBox="0 0 10 12" fill="currentColor" aria-hidden="true"><circle cx="3" cy="2.5" r="1"/><circle cx="7" cy="2.5" r="1"/><circle cx="3" cy="6" r="1"/><circle cx="7" cy="6" r="1"/><circle cx="3" cy="9.5" r="1"/><circle cx="7" cy="9.5" r="1"/></svg>';
-  const UP_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 15l-6-6-6 6"/></svg>';
-  const DOWN_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 
   function orderedSources() {
     const byId = new Map(QUOTA_SOURCES);
@@ -785,16 +778,12 @@
     if (picker.hidden !== !customizing) picker.hidden = !customizing;
     if (!customizing) return;
     const avail = orderedSources().filter(([id]) => connected(id));
-    const html = '<div class="pickerHead"><span>拖拽或点箭头排序，开关控制是否显示</span></div>' +
-      avail.map(([id, name], idx) =>
-        '<div class="pickerRow" draggable="true" data-order-id="' + id + '">' +
-        '<div class="pickerLeft" title="拖动排序">' + GRIP_SVG + '<span class="pickerName">' + esc(name) + '</span></div>' +
-        '<div class="pickerRight">' +
-        '<button class="ordBtn" type="button" data-move="up" data-id="' + id + '" aria-label="上移 ' + esc(name) + '"' + (idx === 0 ? ' disabled' : '') + '>' + UP_SVG + '</button>' +
-        '<button class="ordBtn" type="button" data-move="down" data-id="' + id + '" aria-label="下移 ' + esc(name) + '"' + (idx === avail.length - 1 ? ' disabled' : '') + '>' + DOWN_SVG + '</button>' +
-        '<button class="switch sm" type="button" role="switch" data-pick-panel="' + id + '" aria-label="显示 ' + esc(name) + ' 额度" aria-checked="' + quotaOn(id) + '"></button>' +
-        '</div></div>'
-      ).join('');
+    const html = avail.map(([id, name]) =>
+      '<div class="pickerRow" data-order-id="' + id + '">' +
+      '<div class="pickerLeft" title="拖动排序">' + GRIP_SVG + '<span class="pickerName">' + esc(name) + '</span></div>' +
+      '<button class="switch sm" type="button" role="switch" data-pick-panel="' + id + '" aria-label="显示 ' + esc(name) + ' 额度" aria-checked="' + quotaOn(id) + '"></button>' +
+      '</div>'
+    ).join('');
     if (html !== lastPicker) { lastPicker = html; picker.innerHTML = html; }
   }
 
@@ -839,21 +828,6 @@
   });
 
   $('quotaPicker').addEventListener('click', async (event) => {
-    const moveBtn = event.target.closest('[data-move]');
-    if (moveBtn && !moveBtn.disabled) {
-      const id = moveBtn.dataset.id;
-      const dir = moveBtn.dataset.move === 'up' ? -1 : 1;
-      const all = orderedSources().map(([k]) => k);
-      const vis = all.filter((k) => connected(k));
-      const pos = vis.indexOf(id);
-      const swapWith = vis[pos + dir];
-      if (!swapWith) return;
-      const i = all.indexOf(id);
-      const j = all.indexOf(swapWith);
-      [all[i], all[j]] = [all[j], all[i]];
-      saveQuotaOrder(all);
-      return;
-    }
     const panelBtn = event.target.closest('[data-pick-panel]');
     if (!panelBtn) return;
     const id = panelBtn.dataset.pickPanel;
@@ -872,43 +846,72 @@
     }
   });
 
-  const clearDragMarks = () => $('quotaPicker').querySelectorAll('.pickerRow').forEach((r) => r.classList.remove('overTop', 'overBottom', 'dragging'));
-  $('quotaPicker').addEventListener('dragstart', (event) => {
+  // Smooth pointer-based drag reordering inside the WKWebView popover.
+  let dragState = null;
+  const clearDropMarks = () => $('quotaPicker').querySelectorAll('.pickerRow').forEach((r) => r.classList.remove('overTop', 'overBottom'));
+  $('quotaPicker').addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || event.target.closest('[data-pick-panel]')) return;
     const row = event.target.closest('.pickerRow');
     if (!row) return;
-    dragId = row.dataset.orderId;
-    row.classList.add('dragging');
-    if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', dragId);
-    }
-  });
-  $('quotaPicker').addEventListener('dragover', (event) => {
-    if (!dragId) return;
-    const row = event.target.closest('.pickerRow');
-    if (!row || row.dataset.orderId === dragId) return;
     event.preventDefault();
-    $('quotaPicker').querySelectorAll('.pickerRow').forEach((r) => r.classList.remove('overTop', 'overBottom'));
-    const rect = row.getBoundingClientRect();
-    row.classList.add(event.clientY < rect.top + rect.height / 2 ? 'overTop' : 'overBottom');
+    dragState = { id: row.dataset.orderId, row, startY: event.clientY, active: false, targetId: null, after: false };
+    const onMove = (e) => {
+      if (!dragState) return;
+      const dy = e.clientY - dragState.startY;
+      if (!dragState.active && Math.abs(dy) < 3) return;
+      if (!dragState.active) {
+        dragState.active = true;
+        dragState.row.classList.add('dragging');
+      }
+      dragState.row.style.transform = 'translateY(' + dy + 'px)';
+      clearDropMarks();
+      dragState.targetId = null;
+      const rows = [...$('quotaPicker').querySelectorAll('.pickerRow')].filter((r) => r !== dragState.row);
+      for (const other of rows) {
+        const rect = other.getBoundingClientRect();
+        if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
+          const after = e.clientY >= rect.top + rect.height / 2;
+          other.classList.add(after ? 'overBottom' : 'overTop');
+          dragState.targetId = other.dataset.orderId;
+          dragState.after = after;
+          break;
+        }
+      }
+      if (!dragState.targetId && rows.length) {
+        const firstRect = rows[0].getBoundingClientRect();
+        const lastRect = rows[rows.length - 1].getBoundingClientRect();
+        if (e.clientY < firstRect.top) {
+          rows[0].classList.add('overTop');
+          dragState.targetId = rows[0].dataset.orderId;
+          dragState.after = false;
+        } else if (e.clientY > lastRect.bottom) {
+          rows[rows.length - 1].classList.add('overBottom');
+          dragState.targetId = rows[rows.length - 1].dataset.orderId;
+          dragState.after = true;
+        }
+      }
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      if (!dragState) return;
+      const { id, row: draggedRow, active, targetId, after } = dragState;
+      dragState = null;
+      draggedRow.classList.remove('dragging');
+      draggedRow.style.transform = '';
+      clearDropMarks();
+      if (!active || !targetId || targetId === id) return;
+      const all = orderedSources().map(([k]) => k).filter((k) => k !== id);
+      const idx = all.indexOf(targetId);
+      if (idx < 0) return;
+      all.splice(after ? idx + 1 : idx, 0, id);
+      saveQuotaOrder(all);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
   });
-  $('quotaPicker').addEventListener('drop', (event) => {
-    if (!dragId) return;
-    event.preventDefault();
-    const row = event.target.closest('.pickerRow');
-    const targetId = row?.dataset.orderId;
-    const after = row?.classList.contains('overBottom');
-    const sourceId = dragId;
-    dragId = null;
-    clearDragMarks();
-    if (!targetId || targetId === sourceId) return;
-    const all = orderedSources().map(([k]) => k).filter((k) => k !== sourceId);
-    const idx = all.indexOf(targetId);
-    if (idx < 0) return;
-    all.splice(after ? idx + 1 : idx, 0, sourceId);
-    saveQuotaOrder(all);
-  });
-  $('quotaPicker').addEventListener('dragend', () => { dragId = null; clearDragMarks(); });
 
   // Clicking a platform opens its details in place; clicking again folds them.
   $('quota').addEventListener('click', (event) => {
