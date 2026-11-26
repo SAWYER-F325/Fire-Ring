@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readConfig } from './config.mjs';
+import { DATA_DIR, readConfig } from './config.mjs';
 
 const HOME = os.homedir();
 const exists = (p) => {
@@ -185,3 +185,79 @@ export function disconnectDeepSeek() {
 }
 
 export const _test = { lockWithPlugin, lockWithoutPlugin };
+
+// ── Claude Code CLI statusLine integration ──────────────────────────────────
+// Chains safely onto an existing statusLine command (if any) and restores the
+// exact previous ~/.claude/settings.json entry on disconnect.
+const CLAUDE_SETTINGS_FILE = () => path.join(os.homedir(), '.claude', 'settings.json');
+const STATUSLINE_PREV_FILE = () => path.join(DATA_DIR, 'claude-statusline-prev.json');
+const STATUSLINE_CHAIN_SCRIPT = () => path.join(DATA_DIR, 'claude-statusline-chain.sh');
+const STATUSLINE_SCRIPT = fileURLToPath(new URL('./statusline.mjs', import.meta.url));
+const shellQuote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+
+function isFireRingStatusLine(cmd) {
+  if (typeof cmd !== 'string') return false;
+  return cmd.includes('claude-statusline-chain.sh') || cmd.includes('statusline.mjs');
+}
+
+export function claudeStatusLineState() {
+  const claudeDir = path.join(os.homedir(), '.claude');
+  if (!exists(claudeDir)) return 'no_claude';
+  const settings = readJson(CLAUDE_SETTINGS_FILE()) || {};
+  const cmd = settings.statusLine && settings.statusLine.command;
+  if (isFireRingStatusLine(cmd)) return 'on';
+  return cmd ? 'other' : 'off';
+}
+
+export function connectClaudeStatusLine() {
+  const settingsFile = CLAUDE_SETTINGS_FILE();
+  fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const settings = readJson(settingsFile) || {};
+  const prev = settings.statusLine ?? null;
+  const alreadyOurs = prev && isFireRingStatusLine(prev.command);
+
+  let original = prev;
+  if (alreadyOurs) {
+    original = readJson(STATUSLINE_PREV_FILE())?.previous ?? null;
+  } else {
+    fs.writeFileSync(STATUSLINE_PREV_FILE(), JSON.stringify({ previous: prev }, null, 2) + '\n');
+  }
+
+  const nodeCmd = shellQuote(process.execPath) + ' ' + shellQuote(STATUSLINE_SCRIPT);
+  if (original && typeof original.command === 'string' && original.command.trim()) {
+    const scriptPath = STATUSLINE_CHAIN_SCRIPT();
+    const chain = [
+      '#!/bin/sh',
+      '# Managed by Fire Ring: relays Claude Code statusLine JSON to Fire Ring',
+      '# while keeping the previous statusLine command untouched.',
+      'input=$(cat)',
+      `printf '%s' "$input" | FIRE_RING_DATA_DIR=${shellQuote(DATA_DIR)} ${nodeCmd} --quiet 2>/dev/null || true`,
+      `printf '%s' "$input" | ${original.command}`,
+      '',
+    ].join('\n');
+    fs.writeFileSync(scriptPath, chain, { mode: 0o755 });
+    settings.statusLine = { ...original, type: 'command', command: shellQuote(scriptPath) };
+  } else {
+    settings.statusLine = { type: 'command', command: nodeCmd };
+  }
+  fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2) + '\n');
+  console.log('[setup] Claude Code statusLine connected');
+  return claudeStatusLineState();
+}
+
+export function disconnectClaudeStatusLine() {
+  const settingsFile = CLAUDE_SETTINGS_FILE();
+  const settings = readJson(settingsFile);
+  const prevFile = STATUSLINE_PREV_FILE();
+  const saved = readJson(prevFile);
+  if (settings && settings.statusLine && isFireRingStatusLine(settings.statusLine.command)) {
+    if (saved && saved.previous) settings.statusLine = saved.previous;
+    else delete settings.statusLine;
+    fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2) + '\n');
+  }
+  fs.rmSync(STATUSLINE_CHAIN_SCRIPT(), { force: true });
+  fs.rmSync(prevFile, { force: true });
+  console.log('[setup] Claude Code statusLine restored');
+  return claudeStatusLineState();
+}

@@ -125,6 +125,16 @@
 
   .brandRow { display: flex; align-items: center; gap: 5px; height: 22px; padding: 0 10px; }
   .brandRow span { font-size: 11px; font-weight: 600; letter-spacing: .02em; background: linear-gradient(90deg, #ffd84a, #ff8a2b 45%, #f2452a); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .quotaStrip {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    padding: 4px 10px 6px; margin-bottom: 2px;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+    font-size: 11px; line-height: 16px; color: var(--ink-2); font-variant-numeric: tabular-nums;
+  }
+  .qItem { display: inline-flex; align-items: center; gap: 4px; }
+  .qItem b { color: var(--ink); font-weight: 600; }
+  .qItem.warn b { color: #ffb347; }
+  .qItem.low b { color: var(--fire-waiting); }
   .groupLabel { position: relative; height: 24px; padding: 0 10px; font-size: 11px; color: var(--ink-2); }
   .groupLabel > .burnable { height: 100%; display: flex; align-items: center; justify-content: space-between; }
   .clearAll {
@@ -243,6 +253,7 @@
   const cardHost = document.getElementById('cardHost');
 
   let sessions = [];
+  let quotaSummary = [];
   let showList = false;
   const orderIndex = new Map();
   let nextOrder = 0;
@@ -402,8 +413,26 @@
 
   const BRAND = '<div class="brandRow" aria-label="Fire Ring"><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path fill="#e0231c" d="M12 1C13.2 5.5 20 9 20 15.5C20 20 16.4 23 12 23C7.6 23 4 20 4 15.5C4 12.5 5.6 10 7.5 8.5C7.9 10.3 8.7 11.3 9.9 11.8C9.5 7.8 10.4 4 12 1Z"/><path fill="#ff7a2b" d="M12.5 8C13.3 11 17 13 17 17C17 20.2 14.8 22.3 12 22.3C9.2 22.3 7 20.2 7 17.2C7 15.4 7.9 14 9 13C9.3 14.2 9.8 14.9 10.7 15.3C10.5 12.6 11.2 10 12.5 8Z"/><path fill="#ffd84a" d="M12.3 14.5C12.8 16.2 14.7 17.2 14.7 19.2C14.7 20.8 13.5 21.8 12 21.8C10.5 21.8 9.3 20.8 9.3 19.3C9.3 17.7 11.6 16.5 12.3 14.5Z"/></svg><span>Fire Ring</span></div>';
 
+  const Q_WIN = { five_hour: '5h', weekly: '周', scoped: '限' };
+  function quotaStripHtml() {
+    if (!quotaSummary.length) return '';
+    const items = [];
+    for (const q of quotaSummary) {
+      if (Array.isArray(q.windows) && q.windows.length) {
+        const parts = q.windows.map((w) => (Q_WIN[w.kind] || '') + ' ' + w.leftPercent + '%');
+        const minLeft = Math.min(...q.windows.map((w) => w.leftPercent));
+        const cls = minLeft <= 10 ? ' low' : minLeft <= 30 ? ' warn' : '';
+        items.push('<span class="qItem' + cls + '">' + esc(q.name) + ' <b>' + esc(parts.join(' / ')) + '</b></span>');
+      } else if (Number.isFinite(q.total)) {
+        const sym = q.currency === 'USD' ? '$' : '¥';
+        items.push('<span class="qItem">' + esc(q.name) + ' <b>' + sym + q.total.toFixed(2) + '</b></span>');
+      }
+    }
+    return items.length ? '<div class="quotaStrip">' + items.join('') + '</div>' : '';
+  }
+
   function listHtml(groups) {
-    return BRAND + groups.map(([name, rows]) =>
+    return BRAND + quotaStripHtml() + groups.map(([name, rows]) =>
       '<div class="groupLabel"><div class="burnable"><span>' + name + '</span>' +
         (name === '完成' ? '<button class="clearAll" data-act="clearAll">全部清除</button>' : '') +
       '</div></div>' + rows.map((s) =>
@@ -446,9 +475,10 @@
     }
     const moreCount = mode === 'peek' && !demoItem && total > peekRows.length ? total : 0;
     const groups = [['等你', waiting], ['完成', finished], ['在跑', running]].filter(([, rows]) => rows.length);
+    const qSig = JSON.stringify(quotaSummary);
     const signature = mode === 'peek'
       ? 'peek|' + moreCount + '|' + peekRows.map((s) => s.id + ':' + s.status + ':' + label(s)).join('|')
-      : 'list|' + groups.flatMap(([, rows]) => rows).map((s) => s.id + ':' + s.status + ':' + label(s) + ':' + timeText(s)).join('|');
+      : 'list|' + qSig + '|' + groups.flatMap(([, rows]) => rows).map((s) => s.id + ':' + s.status + ':' + label(s) + ':' + timeText(s)).join('|');
 
     const width = mode === 'peek' ? PEEK_WIDTH : LIST_WIDTH;
     root.style.setProperty('--open-w', width + 'px');
@@ -700,6 +730,7 @@
     peekMs = (data.peekSeconds || 6) * 1000;
     const was = new Map(sessions.map((s) => [s.id, s.status]));
     sessions = Array.isArray(data.sessions) ? data.sessions : [];
+    quotaSummary = Array.isArray(data.quotaSummary) ? data.quotaSummary : [];
     // Completions cleared elsewhere (opened in their own app, or from the
     // menu bar) burn away here too rather than vanish.
     const gone = finishedLines().filter((line) => was.get(line.dataset.id) === 'finished' && (byId(line.dataset.id)?.status ?? 'idle') === 'idle');

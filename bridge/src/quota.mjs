@@ -1,11 +1,13 @@
-// Usage limits for the menu-bar panel: how much of each window is left and
-// when it resets.
+// Usage limits for the menu-bar panel and notch: how much of each window is
+// left, when it resets, and recent local token activity.
 //
 // Codex      every model response in a rollout log carries `rate_limits`, with
 //            a 5-hour (primary) and a weekly (secondary) window.
-// Claude     only what Claude Code leaves on this Mac: its status line (terminal
-//            sessions) or the "used up until …" notes in its conversations.
-// DeepSeek   billed per token, with no time windows, so it is left out.
+// Claude     strictly local, zero network, zero sign-in borrowing:
+//            1) Claude Code CLI status line (`claude-statusline.json`, exact % + reset time)
+//            2) Claude Desktop local plan history (`plan-usage-history.json`, fh/sd/xu + trend)
+//            3) Local conversation JSONL logs (refusal reset times + recent token usage)
+// DeepSeek   billed per token, with no time windows, so it shows account balance.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -83,7 +85,7 @@ function refresh(value, now) {
 }
 
 // Numbers Claude Code itself handed to the status line (statusline.mjs): no
-// network and no sign-in. Within a day they are preferred to asking Anthropic.
+// network and no sign-in.
 const STATUSLINE_FRESH_MS = 24 * 60 * 60_000;
 
 export function statusLineQuota(now = Date.now()) {
@@ -102,15 +104,101 @@ export function statusLineQuota(now = Date.now()) {
   return windows.length ? { state: 'ok', source: 'statusline', observedAt, windows, extras: [] } : null;
 }
 
-// When a limit is used up, Claude Code records the refusal in the conversation
-// with which window it was and when it resets. That is all the desktop app
-// leaves behind; there are no running percentages.
+// Claude Desktop writes plan usage samples locally to plan-usage-history.json:
+// { version: 2, samples: [{ t: ms, org: uuid, u: { fh?: pct, sd?: pct, xu?: pct } }] }.
+const CLAUDE_PLAN_HISTORY_FILE = process.env.FIRE_RING_CLAUDE_PLAN_HISTORY
+  || path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'plan-usage-history.json');
+const DESKTOP_FIVE_HOUR_MAX_AGE_MS = 6 * 60 * 60_000;
+const DESKTOP_WEEKLY_MAX_AGE_MS = 8 * 24 * 60 * 60_000;
+
+let desktopPlanCache = { key: '', samples: null };
+
+function loadDesktopSamples() {
+  let stat;
+  try {
+    stat = fs.statSync(CLAUDE_PLAN_HISTORY_FILE);
+  } catch {
+    desktopPlanCache = { key: '', samples: null };
+    return null;
+  }
+  const key = stat.mtimeMs + ':' + stat.size;
+  if (key === desktopPlanCache.key) return desktopPlanCache.samples;
+  try {
+    const raw = JSON.parse(fs.readFileSync(CLAUDE_PLAN_HISTORY_FILE, 'utf8'));
+    const samples = Array.isArray(raw && raw.samples) ? raw.samples : [];
+    desktopPlanCache = { key, samples };
+    return samples;
+  } catch {
+    return desktopPlanCache.samples;
+  }
+}
+
+function estimateWeeklyTrend(samples, latest, now) {
+  if (!latest || !Number.isFinite(latest.u?.sd)) return null;
+  const org = latest.org || '';
+  const windowCutoff = now - 7 * 24 * 60 * 60_000;
+  let earliest = latest;
+  let prevSd = Number(latest.u.sd);
+  for (let i = samples.length - 2; i >= 0; i--) {
+    const s = samples[i];
+    if (!s || !Number.isFinite(s.t) || s.t < windowCutoff) break;
+    if ((s.org || '') !== org) continue;
+    if (!Number.isFinite(s.u?.sd)) continue;
+    const sd = Number(s.u.sd);
+    // Usage dropped significantly: crossed a weekly reset boundary.
+    if (sd > prevSd) break;
+    earliest = s;
+    prevSd = sd;
+  }
+  const elapsedHours = (latest.t - earliest.t) / 3_600_000;
+  const delta = Number(latest.u.sd) - Number(earliest.u.sd);
+  if (elapsedHours < 0.5 || delta < 2) return null;
+  const perHour = delta / elapsedHours;
+  const left = Math.max(0, 100 - Number(latest.u.sd));
+  return {
+    weeklyPerHour: Math.round(perHour * 100) / 100,
+    estimatedHoursLeft: left > 0 ? Math.round((left / perHour) * 10) / 10 : 0,
+  };
+}
+
+/** Reads official plan usage percentages persisted locally by Claude Desktop. */
+export function desktopPlanQuota(now = Date.now()) {
+  const samples = loadDesktopSamples();
+  if (!samples || !samples.length) return null;
+  let latest = null;
+  for (let i = samples.length - 1; i >= 0; i--) {
+    const s = samples[i];
+    if (s && Number.isFinite(s.t) && s.u && typeof s.u === 'object') {
+      latest = s;
+      break;
+    }
+  }
+  if (!latest || now - latest.t > DESKTOP_WEEKLY_MAX_AGE_MS) return null;
+
+  const windows = [];
+  if (Number.isFinite(latest.u.fh) && now - latest.t <= DESKTOP_FIVE_HOUR_MAX_AGE_MS) {
+    windows.push(windowOf('five_hour', latest.u.fh, null, now));
+  }
+  if (Number.isFinite(latest.u.sd)) {
+    windows.push(windowOf('weekly', latest.u.sd, null, now));
+  }
+  if (!windows.length) return null;
+
+  const extraUsage = Number.isFinite(latest.u.xu)
+    ? { usedPercent: Math.max(0, Math.min(100, Number(latest.u.xu))) }
+    : null;
+  const trend = estimateWeeklyTrend(samples, latest, now);
+  return { state: 'ok', source: 'desktop', observedAt: latest.t, windows, extras: [], extraUsage, trend };
+}
+
+// Local Claude Code transcripts (~/.claude/projects/*/*.jsonl): used both for
+// refusal reset timestamps and lightweight local token activity summaries.
 const CLAUDE_PROJECTS = path.join(os.homedir(), '.claude', 'projects');
 const LIMIT_FILES = 20;
 const LIMIT_MAX_AGE_MS = 8 * 24 * 60 * 60_000;   // a weekly limit can last a week
 const LIMIT_KIND = { five_hour: 'five_hour', seven_day: 'weekly', weekly: 'weekly' };
 
-function recentClaudeFiles(now) {
+function recentClaudeFiles(now, maxAge = LIMIT_MAX_AGE_MS, limit = LIMIT_FILES) {
   const files = [];
   let projects = [];
   try {
@@ -130,13 +218,13 @@ function recentClaudeFiles(now) {
       if (!name.endsWith('.jsonl')) continue;
       try {
         const stat = fs.statSync(path.join(dir, name));
-        if (now - stat.mtimeMs < LIMIT_MAX_AGE_MS) files.push({ file: path.join(dir, name), mtime: stat.mtimeMs });
+        if (now - stat.mtimeMs < maxAge) files.push({ file: path.join(dir, name), mtime: stat.mtimeMs, size: stat.size });
       } catch {
         /* removed meanwhile */
       }
     }
   }
-  return files.sort((a, b) => b.mtime - a.mtime).slice(0, LIMIT_FILES);
+  return files.sort((a, b) => b.mtime - a.mtime).slice(0, limit);
 }
 
 let limitCache = { key: '', value: [] };
@@ -185,21 +273,145 @@ export function usedUpClaudeLimits(now = Date.now()) {
   return limitCache.value.filter((l) => l.resetsAt * 1000 > now);
 }
 
+const USAGE_FILE_CACHE = new Map(); // file -> { mtime, size, entries: [{ at, model, tokens }] }
+const DAY_MS = 24 * 60 * 60_000;
+const FIVE_HOUR_MS = 5 * 60 * 60_000;
+
+function parseUsageEntries(file) {
+  const entries = [];
+  let lines;
+  try {
+    lines = tailLines(file);
+  } catch {
+    return entries;
+  }
+  for (const line of lines) {
+    if (!line.includes('"usage"') || !line.includes('"assistant"')) continue;
+    try {
+      const record = JSON.parse(line);
+      if (record.type !== 'assistant' || record.isApiErrorMessage) continue;
+      const usage = record.message && record.message.usage;
+      if (!usage || typeof usage !== 'object') continue;
+      const at = Date.parse(record.timestamp) || 0;
+      if (!at) continue;
+      const input = Number(usage.input_tokens) || 0;
+      const output = Number(usage.output_tokens) || 0;
+      const cacheRead = Number(usage.cache_read_input_tokens) || 0;
+      const cacheWrite = Number(usage.cache_creation_input_tokens) || 0;
+      entries.push({
+        at,
+        model: typeof record.message.model === 'string' ? record.message.model : '',
+        tokens: input + output + cacheRead + cacheWrite,
+        billable: input + output + cacheWrite,
+      });
+    } catch {
+      /* partial line from tail */
+    }
+  }
+  return entries;
+}
+
+/** Local token activity from Claude Code transcripts (last 5h & today). */
+export function localClaudeUsage(now = Date.now()) {
+  const files = recentClaudeFiles(now, DAY_MS, 16);
+  const fiveHourCutoff = now - FIVE_HOUR_MS;
+  const d = new Date(now);
+  const midnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const fiveHour = { messages: 0, totalTokens: 0, activeTokens: 0 };
+  const today = { messages: 0, totalTokens: 0, activeTokens: 0 };
+  let latestModel = '';
+  let latestAt = 0;
+
+  for (const { file, mtime, size } of files) {
+    let hit = USAGE_FILE_CACHE.get(file);
+    if (!hit || hit.mtime !== mtime || hit.size !== size) {
+      hit = { mtime, size, entries: parseUsageEntries(file) };
+      USAGE_FILE_CACHE.set(file, hit);
+    }
+    for (const e of hit.entries) {
+      if (e.at >= fiveHourCutoff) {
+        fiveHour.messages += 1;
+        fiveHour.totalTokens += e.tokens;
+        fiveHour.activeTokens += e.billable;
+      }
+      if (e.at >= midnight) {
+        today.messages += 1;
+        today.totalTokens += e.tokens;
+        today.activeTokens += e.billable;
+      }
+      if (e.model && e.at > latestAt) {
+        latestAt = e.at;
+        latestModel = e.model;
+      }
+    }
+  }
+
+  if (!fiveHour.messages && !today.messages) return null;
+  return { fiveHour, today, model: latestModel || null };
+}
+
+function mergeWindows(primary, secondary, usedUp, now) {
+  const byKind = new Map();
+  for (const w of secondary || []) byKind.set(w.kind, { ...w });
+  for (const w of primary || []) {
+    const fallback = byKind.get(w.kind);
+    byKind.set(w.kind, {
+      ...w,
+      resetsAt: w.resetsAt ?? fallback?.resetsAt ?? null,
+    });
+  }
+  for (const l of usedUp || []) {
+    byKind.set(l.kind, windowOf(l.kind, 100, l.resetsAt, now));
+  }
+  const order = { five_hour: 0, weekly: 1, scoped: 2 };
+  return [...byKind.values()].sort((a, b) => (order[a.kind] ?? 9) - (order[b.kind] ?? 9));
+}
+
 /**
- * Claude's limits, read on this Mac only: Claude Code's status line if it runs
- * (terminal sessions), else the "used up until …" notes Claude Code leaves in
- * its conversations. Fire Ring no longer asks Anthropic with the Claude Code
- * sign-in: Anthropic revoked that sign-in each time it was used this way.
+ * Claude's limits, read strictly on this Mac:
+ * 1) Claude Code status line (`claude-statusline.json`, exact percentages + reset times)
+ * 2) Claude Desktop local history (`plan-usage-history.json`, official percentages + trend)
+ * 3) Local conversation refusal notes & token activity.
+ * Fire Ring never borrows Claude sign-in credentials or queries Anthropic over the network.
  */
 export function readClaudeQuota(now = Date.now()) {
   const local = statusLineQuota(now);
-  if (local) return { id: 'claude', name: 'Claude', ...local };
+  const desktop = desktopPlanQuota(now);
   const usedUp = usedUpClaudeLimits(now);
+  const localUsage = localClaudeUsage(now);
+
+  if (local && desktop) {
+    // Prefer whichever source observed usage more recently (with 60s hysteresis in favour of statusline).
+    const desktopNewer = desktop.observedAt > local.observedAt + 60_000;
+    const windows = desktopNewer
+      ? mergeWindows(desktop.windows, local.windows, usedUp, now)
+      : mergeWindows(local.windows, desktop.windows, usedUp, now);
+    return {
+      id: 'claude',
+      name: 'Claude',
+      state: 'ok',
+      source: desktopNewer ? 'merged' : 'statusline',
+      observedAt: Math.max(local.observedAt, desktop.observedAt),
+      windows,
+      extras: [],
+      extraUsage: desktop.extraUsage || null,
+      trend: desktop.trend || null,
+      localUsage,
+    };
+  }
+  if (local) {
+    const windows = mergeWindows(local.windows, null, usedUp, now);
+    return { id: 'claude', name: 'Claude', ...local, windows, localUsage };
+  }
+  if (desktop) {
+    const windows = mergeWindows(desktop.windows, null, usedUp, now);
+    return { id: 'claude', name: 'Claude', ...desktop, windows, localUsage };
+  }
   if (usedUp.length) {
     const windows = usedUp.map((l) => windowOf(l.kind, 100, l.resetsAt, now));
-    return { id: 'claude', name: 'Claude', state: 'ok', source: 'limit', observedAt: now, windows, extras: [] };
+    return { id: 'claude', name: 'Claude', state: 'ok', source: 'limit', observedAt: now, windows, extras: [], localUsage };
   }
-  return { id: 'claude', name: 'Claude', state: 'limits_only', source: 'limit', windows: [] };
+  return { id: 'claude', name: 'Claude', state: 'limits_only', source: 'limit', windows: [], localUsage };
 }
 
 /** Platforms with a window used up right now; their sessions cannot be running. */
@@ -233,4 +445,26 @@ export function readQuota(now = Date.now()) {
   // The balance is asked over the network only while it is shown.
   if (providers.dsh && quota.dsh) shown.push(readDeepSeekQuota(now));
   return shown;
+}
+
+/** Compact quota snapshot for the notch expanded card (no network triggers). */
+export function quotaSummary(now = Date.now()) {
+  const { quota, providers } = readConfig();
+  const out = [];
+  for (const q of connectedQuota(now)) {
+    if (quota[q.id] !== true || q.state !== 'ok' || !q.windows.length) continue;
+    out.push({
+      id: q.id,
+      name: q.name,
+      windows: q.windows.map((w) => ({ kind: w.kind, leftPercent: Math.round(w.leftPercent), reset: Boolean(w.reset) })),
+    });
+  }
+  if (providers.dsh && quota.dsh) {
+    const ds = readDeepSeekQuota(now);
+    const main = Array.isArray(ds.balances) ? ds.balances[0] : null;
+    if (main && Number.isFinite(Number(main.total))) {
+      out.push({ id: 'dsh', name: 'DeepSeek', currency: main.currency, total: Number(main.total) });
+    }
+  }
+  return out;
 }

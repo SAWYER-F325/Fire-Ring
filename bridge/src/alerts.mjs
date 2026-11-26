@@ -16,6 +16,7 @@ const hhmm = (ms) => new Date(ms).toLocaleTimeString('zh-CN', { hour: '2-digit',
 export function createAlerts({
   now = Date.now,
   config = () => readConfig(),
+  claudeQuota = () => null,
   codexQuota = () => null,
   deepseekBalance = () => null,
 } = {}) {
@@ -125,14 +126,20 @@ export function createAlerts({
       if (quotaPrimed) push('quota', { sound: alerts.sounds.wait, notify: true, ...message });
     };
 
-    const q = providers.codex && alerts.codexLow > 0 ? codexQuota() : null;
-    for (const w of (q && q.state === 'ok' ? q.windows : [])) {
-      const key = 'codex:' + w.kind;
-      if (w.reset || w.leftPercent > alerts.codexLow) { lowFired.delete(key); continue; }
-      const left = Math.max(0, Math.round(w.leftPercent));
-      const title = 'Codex ' + (WINDOW_NAME[w.kind] || '') + '额度剩 ' + left + '%';
-      fire(key, w.resetsAt, { title, plain: title, body: w.resetsAt ? hhmm(w.resetsAt * 1000) + ' 重置' : '' });
-    }
+    const checkWindows = (id, label, q, threshold) => {
+      for (const w of (q && q.state === 'ok' ? q.windows : [])) {
+        const key = id + ':' + w.kind;
+        if (w.reset || w.leftPercent > threshold) { lowFired.delete(key); continue; }
+        const left = Math.max(0, Math.round(w.leftPercent));
+        const title = label + ' ' + (WINDOW_NAME[w.kind] || '') + '额度剩 ' + left + '%';
+        const mark = w.resetsAt || 'active';
+        const resetMs = w.resetsAt ? (w.resetsAt > 1e12 ? w.resetsAt : w.resetsAt * 1000) : 0;
+        fire(key, mark, { title, plain: title, body: resetMs ? hhmm(resetMs) + ' 重置' : '' });
+      }
+    };
+
+    if (providers.claude && alerts.claudeLow > 0) checkWindows('claude', 'Claude', claudeQuota(), alerts.claudeLow);
+    if (providers.codex && alerts.codexLow > 0) checkWindows('codex', 'Codex', codexQuota(), alerts.codexLow);
 
     const reading = providers.dsh && alerts.dsLow.on ? deepseekBalance() : null;
     const main = reading && Array.isArray(reading.balances) ? reading.balances[0] : null;

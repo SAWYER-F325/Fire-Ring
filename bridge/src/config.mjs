@@ -102,6 +102,7 @@ export function normalizeAlerts(raw = {}) {
       const t = tools[id] && typeof tools[id] === 'object' ? tools[id] : {};
       return [id, { wait: t.wait !== false, done: t.done !== false }];
     })),
+    claudeLow: CODEX_LOW.includes(Number(r.claudeLow)) ? Number(r.claudeLow) : 20,
     codexLow: CODEX_LOW.includes(Number(r.codexLow)) ? Number(r.codexLow) : 20,
     dsLow: { on: dsLow.on !== false, amount: Number.isFinite(amount) && amount >= 0 ? Math.round(amount * 100) / 100 : 10 },
   };

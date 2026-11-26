@@ -50,6 +50,7 @@ export function save(limits, now = Date.now()) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const quiet = process.argv.includes('--quiet');
   let input = '';
   for await (const chunk of process.stdin) input += chunk;
   let session = {};
@@ -64,6 +65,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   } catch {
     /* the status line must still render */
   }
-  const parts = [windowText('5 小时', limits.five_hour), windowText('本周', limits.seven_day)].filter(Boolean);
-  process.stdout.write(parts.length ? 'Fire Ring · ' + parts.join(' · ') : 'Fire Ring');
+  if (!quiet) {
+    const parts = [windowText('5 小时', limits.five_hour), windowText('本周', limits.seven_day)].filter(Boolean);
+    process.stdout.write(parts.length ? 'Fire Ring · ' + parts.join(' · ') : 'Fire Ring');
+  }
 }

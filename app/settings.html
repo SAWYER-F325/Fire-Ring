@@ -334,6 +334,10 @@
       <h1>连接</h1>
       <p class="lede">连接你在用的工具，Fire Ring 只显示已连接的。它读取这些工具在本机留下的记录，不上传任何对话内容。</p>
       <div class="card" id="tools"></div>
+      <div id="claudeStatusBox" hidden>
+        <h2>Claude 实时额度状态栏</h2>
+        <div class="card" id="claudeStatusCard"></div>
+      </div>
       <div id="deepseekBox" hidden>
         <h2>DeepSeek 余额</h2>
         <div class="card" style="padding:14px" id="deepseekCard"></div>
@@ -452,6 +456,12 @@
 
       <h2>额度提醒</h2>
       <div class="card">
+        <div class="row" id="quotaClaudeRow">
+          <div class="text"><div class="title">Claude 额度</div><div class="sub">5 小时或每周剩余低于这个比例时提醒一次</div></div>
+          <div class="seg n4 compact" data-seg="claudeLow" role="radiogroup" aria-label="Claude 额度提醒"><i></i>
+            <button data-value="0" role="radio">不提醒</button><button data-value="10" role="radio">10%</button><button data-value="20" role="radio">20%</button><button data-value="30" role="radio">30%</button>
+          </div>
+        </div>
         <div class="row" id="quotaCodexRow">
           <div class="text"><div class="title">Codex 额度</div><div class="sub">5 小时或每周剩余低于这个比例时提醒一次</div></div>
           <div class="seg n4 compact" data-seg="codexLow" role="radiogroup" aria-label="Codex 额度提醒"><i></i>
@@ -713,8 +723,41 @@
 
   function renderConnect() {
     $('tools').innerHTML = info.tools.map(toolRow).join('');
+    renderClaudeStatusLine();
     renderDeepSeek();
   }
+
+  function renderClaudeStatusLine() {
+    const claude = info.tools.find((t) => t.id === 'claude');
+    const st = info.claudeStatusLine || 'off';
+    const box = $('claudeStatusBox');
+    const showBox = Boolean(claude && claude.connected && st !== 'no_claude');
+    box.hidden = !showBox;
+    if (!showBox) return;
+    const isOn = st === 'on';
+    const sub = isOn
+      ? '已接入命令行状态栏，每轮回复自动更新 5 小时与每周额度；断开后原样恢复配置'
+      : st === 'other'
+        ? '检测到你已有自定义状态栏；接入后会保留原状态栏并同步传给 Fire Ring，不联网、不碰登录'
+        : '接入后 Claude Code 命令行每轮回复自动传入精确百分比与重置时间，不联网、不碰登录';
+    $('claudeStatusCard').innerHTML =
+      '<div class="row"><div class="text"><div class="title">Claude Code 命令行状态栏</div><div class="sub">' + esc(sub) + '</div></div>' +
+      (isOn
+        ? pill('ok', '已接入') + ' <button class="btn small" data-claude-sl="0">断开</button>'
+        : pill('off', '未接入') + ' <button class="btn small primary" data-claude-sl="1">接入</button>') +
+      '</div>';
+  }
+  document.addEventListener('click', async (event) => {
+    const btn = event.target.closest('[data-claude-sl]');
+    if (!btn || btn.disabled) return;
+    btn.disabled = true;
+    try {
+      const r = await post('/setup/claude-statusline?on=' + btn.dataset.claudeSl);
+      if (r.ok) await refresh();
+    } finally {
+      btn.disabled = false;
+    }
+  });
 
   // ── DeepSeek balance: the user's own API key, kept in the keychain ──
   const money = (currency, n) => (currency === 'CNY' ? '¥' : currency === 'USD' ? '$' : currency + ' ') + Number(n).toFixed(2);
@@ -894,7 +937,7 @@
 
   // Which tools' limits the menu-bar panel shows. Only connected tools can be shown.
   const QUOTA_ROWS = [
-    ['claude', 'Claude Code', '桌面版不提供实时百分比，打开后只在额度用完时提醒几点重置'],
+    ['claude', 'Claude Code', '5 小时和每周剩余额度（读取 Claude 桌面版记录与命令行状态栏）'],
     ['codex', 'Codex', '5 小时和每周的剩余额度，以及重置时间'],
     ['dsh', 'DeepSeek', '账户余额，每 10 分钟查一次（需要先在「连接」里填 API Key）'],
   ];
@@ -1052,6 +1095,7 @@
     fullscreen: [() => notch.fullscreen, (v) => { notch.fullscreen = v; saveNotch('fullscreen=' + v); }],
     stay: [() => String(notch.peekSeconds), (v) => { notch.peekSeconds = Number(v); post('/peek-seconds?value=' + v).catch(() => {}); }],
     remind: [() => String(alerts.remind), (v) => { alerts.remind = Number(v); saveAlerts({ remind: Number(v) }); }],
+    claudeLow: [() => String(alerts.claudeLow), (v) => { alerts.claudeLow = Number(v); saveAlerts({ claudeLow: Number(v) }); }],
     codexLow: [() => String(alerts.codexLow), (v) => { alerts.codexLow = Number(v); saveAlerts({ codexLow: Number(v) }); }],
   };
   const SWITCH = {
@@ -1267,6 +1311,7 @@
       }).join('');
     }
     const connected = (id) => Boolean(info.tools.find((t) => t.id === id)?.connected);
+    $('quotaClaudeRow').classList.toggle('dim', !connected('claude'));
     $('quotaCodexRow').classList.toggle('dim', !connected('codex'));
     $('quotaDsRow').classList.toggle('dim', !connected('dsh') || !(info.deepseek && info.deepseek.hasKey));
   }

@@ -10,7 +10,7 @@ import http from 'node:http';
 import { readSessions } from './sessions.mjs';
 import { readCodexSessions, readClaudeSessions, primeCodexTitles } from './providers.mjs';
 import { createTracker, openedSince, statusOf } from './status.mjs';
-import { exhaustedProviders, readCodexQuota, readQuota } from './quota.mjs';
+import { exhaustedProviders, quotaSummary, readClaudeQuota, readCodexQuota, readQuota } from './quota.mjs';
 import { createAlerts } from './alerts.mjs';
 import { dshIsFrontmost } from './focus.mjs';
 import { currentSessionId } from './store.mjs';
@@ -18,7 +18,7 @@ import { DATA_DIR, PROVIDER_IDS, STATE_FILE, TOKEN_FILE, VERSION, normalizeAlert
 import { buildDiagnostics } from './diagnostics.mjs';
 import { currentRoute } from './egress.mjs';
 import { checkForUpdate, downloadUpdate, startUpdateChecks, updateStatus } from './update.mjs';
-import { connectDeepSeek, detectTools, disconnectDeepSeek, syncDeepSeekPlugin } from './integrations.mjs';
+import { claudeStatusLineState, connectClaudeStatusLine, connectDeepSeek, detectTools, disconnectClaudeStatusLine, disconnectDeepSeek, syncDeepSeekPlugin } from './integrations.mjs';
 import { deleteKey, hasKey, lastBalance, refreshBalanceNow, saveKey, validKeyShape } from './deepseek-balance.mjs';
 
 // A small JSON body (the API key), never put in a URL where logs could keep it.
@@ -132,7 +132,11 @@ export function startStateServer(port = STATE_PORT) {
     },
   });
 
-  const alerts = createAlerts({ codexQuota: () => readCodexQuota(), deepseekBalance: () => lastBalance() });
+  const alerts = createAlerts({
+    claudeQuota: () => readClaudeQuota(),
+    codexQuota: () => readCodexQuota(),
+    deepseekBalance: () => lastBalance(),
+  });
   let demo = { seq: 0, kind: null };   // 设置里「试一下」让刘海弹出的演示
 
   let snapshot = [];
@@ -147,7 +151,7 @@ export function startStateServer(port = STATE_PORT) {
       .map((s) => [s.id, s.status, s.title, s.project, s.finishedAt, s.lastPromptAt, s.open?.value])
       .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
     const next = JSON.stringify([notchPrefs(state), updateBadge(), readConfig().providers, readConfig().quota, readConfig().theme,
-      alerts.latest().seq, demo.seq, shown]);
+      alerts.latest().seq, demo.seq, quotaSummary(), shown]);
     if (next === fingerprint) return;
     fingerprint = next;
     revision += 1;
@@ -344,6 +348,7 @@ export function startStateServer(port = STATE_PORT) {
         notch: notchPrefs(state),
         route: currentRoute(),
         tools: detectTools().map((t) => (t.id === 'dsh' ? { ...t, live: Boolean(liveDsh()) } : t)),
+        claudeStatusLine: claudeStatusLineState(),
         deepseek: { hasKey: deepseekKey, ...lastBalance() },
         at: Date.now(),
       }));
@@ -386,6 +391,7 @@ export function startStateServer(port = STATE_PORT) {
           update: updateBadge(),
           providers: readConfig().providers,
           quotaShown: readConfig().quota,
+          quotaSummary: quotaSummary(),
           theme: readConfig().theme,
           at: Date.now(),
         });
@@ -406,7 +412,7 @@ export function startStateServer(port = STATE_PORT) {
     }
 
     const writes = ['/open', '/opened', '/dismiss', '/dismiss-finished', '/pending', '/island', '/autopeek', '/peek-seconds', '/notch-prefs', '/alerts/prefs', '/demo', '/reset', '/dsh-live', '/log',
-      '/config', '/update/check', '/update/download', '/setup/deepseek', '/setup/provider',
+      '/config', '/update/check', '/update/download', '/setup/deepseek', '/setup/claude-statusline', '/setup/provider',
       '/deepseek/key', '/deepseek/recheck'];
     if (!writes.includes(url.pathname)) return json({ error: 'not found' }, 404);
     // A plain GET can be fired by an <img> on any page and carries no Origin, so
@@ -614,6 +620,16 @@ export function startStateServer(port = STATE_PORT) {
         try {
           const plugin = param('on') === '0' ? disconnectDeepSeek() : connectDeepSeek();
           return json({ ok: true, plugin });
+        } catch (error) {
+          return json({ ok: false, error: error.message }, 500);
+        }
+      }
+      case '/setup/claude-statusline': {
+        if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
+        try {
+          const statusLine = param('on') === '0' ? disconnectClaudeStatusLine() : connectClaudeStatusLine();
+          publish();
+          return json({ ok: true, claudeStatusLine: statusLine });
         } catch (error) {
           return json({ ok: false, error: error.message }, 500);
         }
