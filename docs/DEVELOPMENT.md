@@ -41,6 +41,8 @@ app/build.sh            # 生成 build/FireRing.app
 open build/FireRing.app
 ```
 
+如果本机用 Homebrew 安装的 Node（动态链接 `libnode`），脚本会自动生成轻量启动器，避免复制出来的二进制缺少动态库；对外发布包建议用 `NODE_BIN` 指定官方独立版 Node。也支持通过 `SIGN_IDENTITY` 指定本机证书签名，或用 `FIRE_RING_REPO=none` 禁用自定义构建的更新检查。
+
 如果你已经装了正式版 Fire Ring，先退出它，两个会抢同一个端口。
 
 只想调后台、不想打包 App 时，可以单独运行，并把数据放到临时文件夹，避免影响正在用的 Fire Ring：
