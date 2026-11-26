@@ -226,11 +226,13 @@ export function connectedQuota(now = Date.now()) {
   ].filter(Boolean);
 }
 
-/** The limits the menu-bar panel shows: connected tools the user chose to see. */
+/** The limits the menu-bar panel shows: connected tools the user chose to see, in their chosen order. */
 export function readQuota(now = Date.now()) {
-  const { quota, providers } = readConfig();
+  const { quota, quotaOrder = [], providers } = readConfig();
   const shown = connectedQuota(now).filter((q) => quota[q.id] === true);
   // The balance is asked over the network only while it is shown.
   if (providers.dsh && quota.dsh) shown.push(readDeepSeekQuota(now));
+  const rank = new Map(quotaOrder.map((id, i) => [id, i]));
+  shown.sort((a, b) => (rank.get(a.id) ?? 999) - (rank.get(b.id) ?? 999));
   return shown;
 }

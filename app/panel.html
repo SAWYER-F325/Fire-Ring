@@ -150,6 +150,41 @@
   section:last-child { padding-bottom: 2px; }
   section.listWrap { border-top: 0; padding: 0 0 8px; }
   .head { font-size: 11px; line-height: 16px; color: var(--ink-2); margin-bottom: 6px; }
+  .headRow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .headRow .head { margin-bottom: 0; }
+  .headAct {
+    border: 0; background: none; padding: 2px 6px; margin-right: -6px; border-radius: 6px;
+    font: inherit; font-size: 11px; line-height: 16px; color: var(--ink-2); cursor: pointer;
+    transition: background-color 200ms var(--liquid), color 200ms var(--liquid);
+  }
+  .headAct:hover { background: rgba(var(--tint),.08); color: var(--ink); }
+  .headAct[aria-expanded="true"] { color: var(--accent); }
+  .quotaPicker {
+    margin-bottom: 8px; padding: 4px 10px; border-radius: 12px;
+    background: var(--tile); box-shadow: var(--tile-shadow), inset 0 0 0 .5px var(--line);
+  }
+  .quotaPicker[hidden] { display: none; }
+  .pickerRow {
+    position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 32px;
+    border-radius: 7px; touch-action: none;
+    transition: background-color 180ms var(--liquid), opacity 180ms var(--liquid);
+  }
+  .pickerRow + .pickerRow { border-top: 1px solid var(--line); }
+  .pickerRow.dragging {
+    z-index: 2; opacity: .92; background: var(--tile-hover);
+    box-shadow: 0 6px 18px var(--shadow), inset 0 0 0 .5px var(--line);
+    transition: none;
+  }
+  .pickerRow.overTop { box-shadow: inset 0 2px 0 var(--accent); }
+  .pickerRow.overBottom { box-shadow: inset 0 -2px 0 var(--accent); }
+  .pickerLeft { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; height: 100%; cursor: grab; }
+  .pickerLeft:active { cursor: grabbing; }
+  .grip { color: var(--ink-3); flex: 0 0 auto; display: block; opacity: .75; }
+  .pickerRow:hover .grip { color: var(--ink-2); opacity: 1; }
+  .pickerName { font-size: 12px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .switch.sm { width: 32px; height: 18px; flex: 0 0 auto; }
+  .switch.sm::after { top: 2px; left: 2px; width: 14px; height: 14px; }
+  .switch.sm[aria-checked="true"]::after { transform: translateX(14px); }
 
   /* Grows with its rows. The app moves the glass on the same curve. */
   #items { background: var(--tray); border-radius: 14px; height: 64px; overflow-y: auto; margin: 0 -8px; padding: 0 8px; transition: height 420ms var(--spring); }
@@ -336,7 +371,11 @@
     <div id="items" role="tabpanel"></div>
   </section>
   <section class="rise" id="quotaSection">
-    <div class="head">额度</div>
+    <div class="headRow">
+      <div class="head">额度</div>
+      <button class="headAct" id="customizeQuota" type="button" aria-expanded="false">自定义</button>
+    </div>
+    <div class="quotaPicker" id="quotaPicker" hidden></div>
     <div id="quota"></div>
   </section>
   <section class="rise">
@@ -691,39 +730,188 @@
   // Each platform: whether it is connected, then how much of each window is left.
   // Which tools are connected, as the bridge last said; null until it has.
   let providers = null;
-  let quotaShown = null;   // which limits the user chose to see (Settings → General)
+  let quotaShown = null;   // which limits the user chose to see (Settings → General / tray customizer)
+  let quotaOrder = null;   // custom display order of tools in the quota section
+  let customizing = false;
+  let lastPicker = null;
   const connected = (id) => !providers || providers[id] === true;
   const quotaOn = (id) => connected(id) && (quotaShown ? quotaShown[id] === true : id === 'codex');
   const connectedCount = () => (providers ? Object.values(providers).filter(Boolean).length : 1);
 
+  const GRIP_SVG = '<svg class="grip" width="10" height="12" viewBox="0 0 10 12" fill="currentColor" aria-hidden="true"><circle cx="3" cy="2.5" r="1"/><circle cx="7" cy="2.5" r="1"/><circle cx="3" cy="6" r="1"/><circle cx="7" cy="6" r="1"/><circle cx="3" cy="9.5" r="1"/><circle cx="7" cy="9.5" r="1"/></svg>';
+
+  function orderedSources() {
+    const byId = new Map(QUOTA_SOURCES);
+    const seen = new Set();
+    const out = [];
+    for (const id of quotaOrder || []) {
+      if (byId.has(id) && !seen.has(id)) { seen.add(id); out.push([id, byId.get(id)]); }
+    }
+    for (const pair of QUOTA_SOURCES) {
+      if (!seen.has(pair[0])) out.push(pair);
+    }
+    return out;
+  }
+
+  async function saveQuotaOrder(nextOrder) {
+    const prev = quotaOrder ? [...quotaOrder] : orderedSources().map(([id]) => id);
+    quotaOrder = [...nextOrder];
+    lastPicker = null;
+    lastQuota = null;
+    render();
+    try {
+      const res = await api('/config?quotaOrder=' + encodeURIComponent(quotaOrder.join(',')), { method: 'POST' });
+      if (!res.ok) throw new Error(String(res.status));
+    } catch {
+      quotaOrder = prev;
+      lastPicker = null;
+      lastQuota = null;
+      render();
+    }
+  }
+
+  function renderQuotaPicker() {
+    const picker = $('quotaPicker');
+    const btn = $('customizeQuota');
+    btn.textContent = customizing ? '完成' : '自定义';
+    btn.setAttribute('aria-expanded', String(customizing));
+    if (picker.hidden !== !customizing) picker.hidden = !customizing;
+    if (!customizing) return;
+    const avail = orderedSources().filter(([id]) => connected(id));
+    const html = avail.map(([id, name]) =>
+      '<div class="pickerRow" data-order-id="' + id + '">' +
+      '<div class="pickerLeft" title="拖动排序">' + GRIP_SVG + '<span class="pickerName">' + esc(name) + '</span></div>' +
+      '<button class="switch sm" type="button" role="switch" data-pick-panel="' + id + '" aria-label="显示 ' + esc(name) + ' 额度" aria-checked="' + quotaOn(id) + '"></button>' +
+      '</div>'
+    ).join('');
+    if (html !== lastPicker) { lastPicker = html; picker.innerHTML = html; }
+  }
+
   function renderQuota() {
-    const shown = QUOTA_SOURCES.filter(([id]) => quotaOn(id));
+    const avail = orderedSources().filter(([id]) => connected(id));
+    const shown = avail.filter(([id]) => quotaOn(id));
     const section = $('quotaSection');
-    if (section.hidden !== !shown.length) section.hidden = !shown.length;
-    const html = shown.map(([id, name]) => {
-      const mine = sessions.filter((s) => s.provider === id);
-      const running = mine.filter((s) => s.status === 'running').length;
-      const text = running ? running + ' 在跑' : mine.length ? mine.length + ' 条会话' : '未发现';
-      const q = quota.find((p) => p.id === id);
-      let body = '';
-      if (q && q.kind === 'balance' && (q.balances || []).length) {
-        body = balanceHtml(q);
-        if (expanded === id) body += balanceDetailsHtml(q);
-      } else if (q && q.windows.length) {
-        body = q.windows.map(meterHtml).join('');
-        if (q.stale) body += '<div class="note">' + (STALE_NOTE[q.stale] || '暂时沿用') + ' ' + ageText(q.observedAt) + '的额度，会自动重试</div>';
-        else if (id === 'codex' && q.observedAt && Date.now() - q.observedAt > STALE_MS) body += '<div class="note">额度来自 ' + ageText(q.observedAt) + '的最后一次使用</div>';
-        if (expanded === id) body += detailsHtml(q);
-      } else if (q) {
-        const detail = q.state === 'egress_down' && q.detail ? '（' + esc(q.detail) + '）' : '';
-        body = '<div class="note">' + (QUOTA_NOTE[q.state] || '暂时读不到额度') + detail + '</div>';
-      }
-      const canOpen = Boolean(q && (q.windows.length || (q.kind === 'balance' && (q.balances || []).length)));
-      return '<div class="provider' + (expanded === id ? ' open' : '') + '" role="button" aria-expanded="' + (expanded === id) + '" data-provider="' + id + '"' + (canOpen ? ' title="展开详细用量"' : '') + '><div class="providerHead"><span>' + name + '</span>' +
-        '<span class="state"><span class="led' + (mine.length ? ' on' : '') + '"></span>' + text + (canOpen ? CHEVRON : '') + '</span></div>' + body + '</div>';
-    }).join('');
+    const hideSection = avail.length === 0;
+    if (section.hidden !== hideSection) section.hidden = hideSection;
+    renderQuotaPicker();
+    const html = shown.length
+      ? shown.map(([id, name]) => {
+        const mine = sessions.filter((s) => s.provider === id);
+        const running = mine.filter((s) => s.status === 'running').length;
+        const text = running ? running + ' 在跑' : mine.length ? mine.length + ' 条会话' : '未发现';
+        const q = quota.find((p) => p.id === id);
+        let body = '';
+        if (q && q.kind === 'balance' && (q.balances || []).length) {
+          body = balanceHtml(q);
+          if (expanded === id) body += balanceDetailsHtml(q);
+        } else if (q && q.windows.length) {
+          body = q.windows.map(meterHtml).join('');
+          if (q.stale) body += '<div class="note">' + (STALE_NOTE[q.stale] || '暂时沿用') + ' ' + ageText(q.observedAt) + '的额度，会自动重试</div>';
+          else if (id === 'codex' && q.observedAt && Date.now() - q.observedAt > STALE_MS) body += '<div class="note">额度来自 ' + ageText(q.observedAt) + '的最后一次使用</div>';
+          if (expanded === id) body += detailsHtml(q);
+        } else if (q) {
+          const detail = q.state === 'egress_down' && q.detail ? '（' + esc(q.detail) + '）' : '';
+          body = '<div class="note">' + (QUOTA_NOTE[q.state] || '暂时读不到额度') + detail + '</div>';
+        }
+        const canOpen = Boolean(q && (q.windows.length || (q.kind === 'balance' && (q.balances || []).length)));
+        return '<div class="provider' + (expanded === id ? ' open' : '') + '" role="button" aria-expanded="' + (expanded === id) + '" data-provider="' + id + '"' + (canOpen ? ' title="展开详细用量"' : '') + '><div class="providerHead"><span>' + name + '</span>' +
+          '<span class="state"><span class="led' + (mine.length ? ' on' : '') + '"></span>' + text + (canOpen ? CHEVRON : '') + '</span></div>' + body + '</div>';
+      }).join('')
+      : (customizing ? '' : '<div class="note">当前未展示任何额度，点右上角「自定义」勾选</div>');
     if (html !== lastQuota) { lastQuota = html; $('quota').innerHTML = html; }
   }
+
+  $('customizeQuota').addEventListener('click', () => {
+    customizing = !customizing;
+    lastPicker = null;
+    render();
+  });
+
+  $('quotaPicker').addEventListener('click', async (event) => {
+    const panelBtn = event.target.closest('[data-pick-panel]');
+    if (!panelBtn) return;
+    const id = panelBtn.dataset.pickPanel;
+    const next = !quotaOn(id);
+    quotaShown = { ...(quotaShown || {}), [id]: next };
+    lastPicker = null;
+    render();
+    try {
+      const res = await api('/config?quota_' + id + '=' + (next ? 1 : 0), { method: 'POST' });
+      if (!res.ok) throw new Error(String(res.status));
+      if (next) loadQuota();
+    } catch {
+      quotaShown = { ...(quotaShown || {}), [id]: !next };
+      lastPicker = null;
+      render();
+    }
+  });
+
+  // Smooth pointer-based drag reordering inside the WKWebView popover.
+  let dragState = null;
+  const clearDropMarks = () => $('quotaPicker').querySelectorAll('.pickerRow').forEach((r) => r.classList.remove('overTop', 'overBottom'));
+  $('quotaPicker').addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || event.target.closest('[data-pick-panel]')) return;
+    const row = event.target.closest('.pickerRow');
+    if (!row) return;
+    event.preventDefault();
+    dragState = { id: row.dataset.orderId, row, startY: event.clientY, active: false, targetId: null, after: false };
+    const onMove = (e) => {
+      if (!dragState) return;
+      const dy = e.clientY - dragState.startY;
+      if (!dragState.active && Math.abs(dy) < 3) return;
+      if (!dragState.active) {
+        dragState.active = true;
+        dragState.row.classList.add('dragging');
+      }
+      dragState.row.style.transform = 'translateY(' + dy + 'px)';
+      clearDropMarks();
+      dragState.targetId = null;
+      const rows = [...$('quotaPicker').querySelectorAll('.pickerRow')].filter((r) => r !== dragState.row);
+      for (const other of rows) {
+        const rect = other.getBoundingClientRect();
+        if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
+          const after = e.clientY >= rect.top + rect.height / 2;
+          other.classList.add(after ? 'overBottom' : 'overTop');
+          dragState.targetId = other.dataset.orderId;
+          dragState.after = after;
+          break;
+        }
+      }
+      if (!dragState.targetId && rows.length) {
+        const firstRect = rows[0].getBoundingClientRect();
+        const lastRect = rows[rows.length - 1].getBoundingClientRect();
+        if (e.clientY < firstRect.top) {
+          rows[0].classList.add('overTop');
+          dragState.targetId = rows[0].dataset.orderId;
+          dragState.after = false;
+        } else if (e.clientY > lastRect.bottom) {
+          rows[rows.length - 1].classList.add('overBottom');
+          dragState.targetId = rows[rows.length - 1].dataset.orderId;
+          dragState.after = true;
+        }
+      }
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      if (!dragState) return;
+      const { id, row: draggedRow, active, targetId, after } = dragState;
+      dragState = null;
+      draggedRow.classList.remove('dragging');
+      draggedRow.style.transform = '';
+      clearDropMarks();
+      if (!active || !targetId || targetId === id) return;
+      const all = orderedSources().map(([k]) => k).filter((k) => k !== id);
+      const idx = all.indexOf(targetId);
+      if (idx < 0) return;
+      all.splice(after ? idx + 1 : idx, 0, id);
+      saveQuotaOrder(all);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  });
 
   // Clicking a platform opens its details in place; clicking again folds them.
   $('quota').addEventListener('click', (event) => {
@@ -860,6 +1048,8 @@
     if (max > 0) maxHeight = max;
     $('root').scrollTop = 0;
     expanded = null;
+    customizing = false;
+    lastPicker = null;
     window.__resync();
     loadQuota();
     tab = mostUrgent();
@@ -916,6 +1106,7 @@
         sessions = Array.isArray(data.sessions) ? data.sessions : [];
         if (data.providers) providers = data.providers;
         if (data.quotaShown) quotaShown = data.quotaShown;
+        if (Array.isArray(data.quotaOrder)) quotaOrder = data.quotaOrder;
         document.documentElement.dataset.theme = data.theme || 'dark';
         // Completions cleared elsewhere burn away here too rather than vanish.
         const gone = finishedRows().filter((row) => was.get(row.dataset.id) === 'finished'

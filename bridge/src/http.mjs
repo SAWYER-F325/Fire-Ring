@@ -146,7 +146,8 @@ export function startStateServer(port = STATE_PORT) {
     const shown = snapshot
       .map((s) => [s.id, s.status, s.title, s.project, s.finishedAt, s.lastPromptAt, s.open?.value])
       .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
-    const next = JSON.stringify([notchPrefs(state), updateBadge(), readConfig().providers, readConfig().quota, readConfig().theme,
+    const cfg = readConfig();
+    const next = JSON.stringify([notchPrefs(state), updateBadge(), cfg.providers, cfg.quota, cfg.quotaOrder, cfg.theme,
       alerts.latest().seq, demo.seq, shown]);
     if (next === fingerprint) return;
     fingerprint = next;
@@ -386,6 +387,7 @@ export function startStateServer(port = STATE_PORT) {
           update: updateBadge(),
           providers: readConfig().providers,
           quotaShown: readConfig().quota,
+          quotaOrder: readConfig().quotaOrder,
           theme: readConfig().theme,
           at: Date.now(),
         });
@@ -564,9 +566,13 @@ export function startStateServer(port = STATE_PORT) {
           patch.proxy = { mode, url: proxyUrl };
         }
         if (param('autoCheck') !== null) patch.updates = { autoCheck: param('autoCheck') !== '0' };
-        for (const id of ['claude', 'codex', 'dsh']) {
+        for (const id of PROVIDER_IDS) {
           const value = param('quota_' + id);
           if (value !== null) patch.quota = { ...(patch.quota || {}), [id]: value !== '0' };
+        }
+        const orderParam = param('quotaOrder');
+        if (orderParam !== null) {
+          patch.quotaOrder = orderParam.split(',').map((s) => s.trim()).filter(Boolean);
         }
         if (param('onboarded') !== null) patch.onboarded = param('onboarded') !== '0';
         if (param('loginPrompt') !== null) patch.loginPrompt = param('loginPrompt') === 'never' ? 'never' : 'ask';
@@ -583,7 +589,7 @@ export function startStateServer(port = STATE_PORT) {
         if (patch.proxy) {
           console.log('[config] network route: ' + currentRoute().label);
         }
-        if (patch.quota || patch.theme) publish();   // the panel follows at once
+        if (patch.quota || patch.quotaOrder || patch.theme) publish();   // the panel follows at once
         return json({ ok: true, config, route: currentRoute() });
       }
       case '/update/check':
