@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import QuartzCore
 import WebKit
 
@@ -41,6 +42,7 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
     private var nextReloadAt: CFTimeInterval = 0
     private var fullscreenTimer: Timer?
     private var lastFullscreen: Bool?
+    private var hotKey: GlobalHotKey?
 
     private let settings = SettingsPanel()
     private let bridge = BridgeProcess()
@@ -59,6 +61,7 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        hotKey?.unregister()
         bridge.stop()
     }
 
@@ -136,6 +139,13 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
         web.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
 
         setupStatusItem()
+        hotKey = GlobalHotKey(
+            onPanel: { [weak self] in self?.togglePanelFromShortcut() },
+            onPreferences: { [weak self] in
+                self?.settings.close()
+                self?.preferences.show()
+            }
+        )
         startPointerTracking()
         startWatchdog()
         AlertCenter.shared.start()
@@ -361,9 +371,11 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
         }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.autosaveName = Self.statusItemName
+        item.isVisible = true
         if let button = item.button {
             button.image = Self.flameIcon()
             button.toolTip = "Fire Ring"
+            button.setAccessibilityIdentifier("FireRing.StatusItem")
             button.action = #selector(toggleSettings)
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -446,6 +458,14 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
             return
         }
         settings.toggle(relativeTo: button)
+    }
+
+    private func togglePanelFromShortcut() {
+        if let button = statusItem?.button {
+            settings.toggle(relativeTo: button)
+        } else {
+            preferences.show()
+        }
     }
 
     // MARK: 右键菜单
@@ -610,6 +630,8 @@ final class Island: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKN
             AlertCenter.shared.play(body["scope"] as? String == "all" ? "fr-blaze" : "fr-singe", volume: volume)
         case "closePanel":
             settings.close()
+        case "openPanel":
+            togglePanelFromShortcut()
         case "loginPrompt":
             LoginItem.answer(body["choice"] as? String ?? "")
         case "openPreferences":
@@ -854,18 +876,26 @@ final class SettingsPanel {
     }
 
     private func position(below button: NSStatusBarButton) {
-        guard let buttonWindow = button.window else { return }
-        let rect = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
-        // The icon can report a spot on no display (a menu bar that is hidden,
-        // or an icon pushed behind the notch). Fall back to where the pointer is.
         let mouse = NSEvent.mouseLocation
-        let host = NSScreen.screens.first { $0.frame.contains(NSPoint(x: rect.midX, y: rect.midY)) }
-        let visible = (host ?? NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main)?.visibleFrame ?? rect
-        let iconX = host == nil ? mouse.x : rect.midX
-        let cardX = min(max(iconX - width / 2, visible.minX + 8), visible.maxX - width - 8)
-        let top = host == nil ? visible.maxY - 6 : min(rect.minY - 6, visible.maxY - 6)
-        anchorX = iconX - cardX
-        // Taller content than this scrolls inside the panel instead of being cut off.
+        let activeScreen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
+        if let buttonWindow = button.window {
+            let rect = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
+            // An icon hidden by a menu bar manager or pushed behind the notch may report
+            // zero width or coordinates off any display; anchor cleanly near top-right then.
+            let host = rect.width > 1 ? NSScreen.screens.first { $0.frame.contains(NSPoint(x: rect.midX, y: rect.midY)) } : nil
+            let visible = (host ?? activeScreen)?.visibleFrame ?? rect
+            let iconX = host == nil ? visible.maxX - width / 2 - 12 : rect.midX
+            let cardX = min(max(iconX - width / 2, visible.minX + 8), visible.maxX - width - 8)
+            let top = host == nil ? visible.maxY - 6 : min(rect.minY - 6, visible.maxY - 6)
+            anchorX = iconX - cardX
+            availableHeight = max(240, min(maxContentHeight, top - visible.minY - 12))
+            window.setFrameTopLeftPoint(NSPoint(x: cardX - sideMargin, y: top + topMargin))
+            return
+        }
+        guard let visible = activeScreen?.visibleFrame else { return }
+        let cardX = max(visible.minX + 8, visible.maxX - width - 12)
+        let top = visible.maxY - 6
+        anchorX = width / 2
         availableHeight = max(240, min(maxContentHeight, top - visible.minY - 12))
         window.setFrameTopLeftPoint(NSPoint(x: cardX - sideMargin, y: top + topMargin))
     }
@@ -1003,6 +1033,61 @@ final class KeyablePanel: NSPanel {
 /// preceding focusing click.
 final class AcceptsFirstMouseWebView: WKWebView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
+/// Global shortcuts without requiring Accessibility permission:
+/// ⌥⌘F toggles the menu-bar panel; ⇧⌥⌘F opens Settings directly.
+final class GlobalHotKey {
+    private static let signature: OSType = 0x46524E47 // 'FRNG'
+    private var panelRef: EventHotKeyRef?
+    private var prefsRef: EventHotKeyRef?
+    private var handlerRef: EventHandlerRef?
+    private let onPanel: () -> Void
+    private let onPreferences: () -> Void
+
+    init(onPanel: @escaping () -> Void, onPreferences: @escaping () -> Void) {
+        self.onPanel = onPanel
+        self.onPreferences = onPreferences
+        register()
+    }
+
+    private func register() {
+        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        let selfPtr = Unmanaged.passUnretained(self).toOpaque()
+        let callback: EventHandlerUPP = { _, event, userData in
+            guard let event, let userData else { return noErr }
+            var hkID = EventHotKeyID()
+            let status = GetEventParameter(
+                event,
+                EventParamName(kEventParamDirectObject),
+                EventParamType(typeEventHotKeyID),
+                nil,
+                MemoryLayout<EventHotKeyID>.size,
+                nil,
+                &hkID
+            )
+            guard status == noErr, hkID.signature == GlobalHotKey.signature else { return noErr }
+            let target = Unmanaged<GlobalHotKey>.fromOpaque(userData).takeUnretainedValue()
+            DispatchQueue.main.async {
+                if hkID.id == 1 { target.onPanel() }
+                else if hkID.id == 2 { target.onPreferences() }
+            }
+            return noErr
+        }
+        guard InstallEventHandler(GetApplicationEventTarget(), callback, 1, &eventType, selfPtr, &handlerRef) == noErr else { return }
+        let modsPanel = UInt32(optionKey | cmdKey)
+        let modsPrefs = UInt32(shiftKey | optionKey | cmdKey)
+        RegisterEventHotKey(UInt32(kVK_ANSI_F), modsPanel, EventHotKeyID(signature: Self.signature, id: 1), GetApplicationEventTarget(), 0, &panelRef)
+        RegisterEventHotKey(UInt32(kVK_ANSI_F), modsPrefs, EventHotKeyID(signature: Self.signature, id: 2), GetApplicationEventTarget(), 0, &prefsRef)
+    }
+
+    func unregister() {
+        if let ref = panelRef { UnregisterEventHotKey(ref); panelRef = nil }
+        if let ref = prefsRef { UnregisterEventHotKey(ref); prefsRef = nil }
+        if let h = handlerRef { RemoveEventHandler(h); handlerRef = nil }
+    }
+
+    deinit { unregister() }
 }
 
 let island = Island()
