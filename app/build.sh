@@ -64,7 +64,7 @@ for sdk in "${SDKS[@]}"; do
       -target "$ARCH-apple-macos14.0" \
       -o "$APP/Contents/MacOS/FireRing" \
       "$APP_DIR/main.swift" "$APP_DIR/Bridge.swift" "$APP_DIR/Preferences.swift" "$APP_DIR/Glass.swift" "$APP_DIR/Welcome.swift" "$APP_DIR/Alerts.swift" \
-      -framework AppKit -framework WebKit -framework ServiceManagement -framework UserNotifications 2>"$BUILD/swiftc.log"; then
+      -framework AppKit -framework Carbon -framework WebKit -framework ServiceManagement -framework UserNotifications 2>"$BUILD/swiftc.log"; then
     built="$sdk"; break
   fi
   rm -rf "$BUILD/modulecache"; mkdir -p "$BUILD/modulecache"

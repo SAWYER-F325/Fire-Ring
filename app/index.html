@@ -123,8 +123,17 @@
     font-size: 11px; color: var(--ink-2); transition: background-color 420ms var(--ease-liquid);
   }
 
-  .brandRow { display: flex; align-items: center; gap: 5px; height: 22px; padding: 0 10px; }
-  .brandRow span { font-size: 11px; font-weight: 600; letter-spacing: .02em; background: linear-gradient(90deg, #ffd84a, #ff8a2b 45%, #f2452a); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .brandRow { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 24px; padding: 0 10px; }
+  .brandLeft { display: inline-flex; align-items: center; gap: 5px; }
+  .brandLeft span { font-size: 11px; font-weight: 600; letter-spacing: .02em; background: linear-gradient(90deg, #ffd84a, #ff8a2b 45%, #f2452a); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .brandActs { display: inline-flex; align-items: center; gap: 2px; margin-right: -6px; }
+  .brandBtn {
+    height: 20px; padding: 0 8px; border: 0; border-radius: 999px; cursor: pointer;
+    font: inherit; font-size: 11px; color: var(--ink-2); background: transparent;
+    transition: background-color 420ms var(--ease-liquid), color 420ms var(--ease-liquid);
+  }
+  .brandBtn.hot { background: rgba(255,138,61,.16); color: var(--ink); transition-duration: 240ms; }
+  .brandBtn:active { transform: scale(.96); }
   .groupLabel { position: relative; height: 24px; padding: 0 10px; font-size: 11px; color: var(--ink-2); }
   .groupLabel > .burnable { height: 100%; display: flex; align-items: center; justify-content: space-between; }
   .clearAll {
@@ -400,7 +409,10 @@
       (moreCount ? '<div class="more" data-act="more">查看全部 ' + moreCount + ' 项</div>' : '');
   }
 
-  const BRAND = '<div class="brandRow" aria-label="Fire Ring"><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path fill="#e0231c" d="M12 1C13.2 5.5 20 9 20 15.5C20 20 16.4 23 12 23C7.6 23 4 20 4 15.5C4 12.5 5.6 10 7.5 8.5C7.9 10.3 8.7 11.3 9.9 11.8C9.5 7.8 10.4 4 12 1Z"/><path fill="#ff7a2b" d="M12.5 8C13.3 11 17 13 17 17C17 20.2 14.8 22.3 12 22.3C9.2 22.3 7 20.2 7 17.2C7 15.4 7.9 14 9 13C9.3 14.2 9.8 14.9 10.7 15.3C10.5 12.6 11.2 10 12.5 8Z"/><path fill="#ffd84a" d="M12.3 14.5C12.8 16.2 14.7 17.2 14.7 19.2C14.7 20.8 13.5 21.8 12 21.8C10.5 21.8 9.3 20.8 9.3 19.3C9.3 17.7 11.6 16.5 12.3 14.5Z"/></svg><span>Fire Ring</span></div>';
+  const BRAND = '<div class="brandRow" aria-label="Fire Ring">' +
+    '<div class="brandLeft"><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path fill="#e0231c" d="M12 1C13.2 5.5 20 9 20 15.5C20 20 16.4 23 12 23C7.6 23 4 20 4 15.5C4 12.5 5.6 10 7.5 8.5C7.9 10.3 8.7 11.3 9.9 11.8C9.5 7.8 10.4 4 12 1Z"/><path fill="#ff7a2b" d="M12.5 8C13.3 11 17 13 17 17C17 20.2 14.8 22.3 12 22.3C9.2 22.3 7 20.2 7 17.2C7 15.4 7.9 14 9 13C9.3 14.2 9.8 14.9 10.7 15.3C10.5 12.6 11.2 10 12.5 8Z"/><path fill="#ffd84a" d="M12.3 14.5C12.8 16.2 14.7 17.2 14.7 19.2C14.7 20.8 13.5 21.8 12 21.8C10.5 21.8 9.3 20.8 9.3 19.3C9.3 17.7 11.6 16.5 12.3 14.5Z"/></svg><span>Fire Ring</span></div>' +
+    '<div class="brandActs"><button class="brandBtn" data-act="openPanel" title="打开面板（⌥⌘F）">面板</button><button class="brandBtn" data-act="openPreferences" title="打开设置（⇧⌥⌘F）">设置</button></div>' +
+    '</div>';
 
   function listHtml(groups) {
     return BRAND + groups.map(([name, rows]) =>
@@ -545,6 +557,13 @@
   cardHost.addEventListener('click', (event) => {
     const target = event.target.closest('[data-act]');
     if (!target) return;
+    if (target.dataset.act === 'openPanel' || target.dataset.act === 'openPreferences') {
+      showList = false;
+      clearPeek();
+      render();
+      send({ kind: target.dataset.act });
+      return;
+    }
     if (target.dataset.act === 'more') {
       clearPeek();
       render();
@@ -593,7 +612,7 @@
   // the pointer instead.
   window.__pointer = (x, y) => {
     const el = document.elementFromPoint(x, y);
-    setHot(el ? el.closest('.clear, .act, .more, .clearAll') || el.closest('.line') : null);
+    setHot(el ? el.closest('.clear, .act, .more, .clearAll, .brandBtn') || el.closest('.line') : null);
     if (hotEl?.classList.contains('clear')) hotEl.closest('.line').classList.add('hot');
     cardHost.querySelectorAll('.line.hot').forEach((line) => {
       if (line !== hotEl && line !== hotEl?.closest('.line')) line.classList.remove('hot');
