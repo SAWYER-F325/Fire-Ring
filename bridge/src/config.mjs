@@ -47,14 +47,14 @@ function lockedProxy() {
 
 // Which tools Fire Ring watches. Nothing is connected until the user connects
 // it in Settings; a tool that is not connected is neither read nor shown.
-export const PROVIDER_IDS = ['claude', 'codex', 'dsh'];
+export const PROVIDER_IDS = ['claude', 'codex', 'dsh', 'antigravity', 'cursor', 'grok'];
 
 const DEFAULTS = {
   proxy: { mode: 'system', url: '' },
-  providers: { claude: false, codex: false, dsh: false },
+  providers: { claude: false, codex: false, dsh: false, antigravity: false, cursor: false, grok: false },
   // Which limits the menu-bar panel shows. Claude's desktop app gives no running
   // percentages, so it is off unless the user turns it on.
-  quota: { claude: false, codex: true, dsh: false },
+  quota: { claude: false, codex: true, dsh: false, antigravity: false, cursor: false, grok: false },
   // Display order of tools inside the menu-bar panel's quota section.
   quotaOrder: [...PROVIDER_IDS],
   updates: { autoCheck: true },

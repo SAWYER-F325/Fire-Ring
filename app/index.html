@@ -292,10 +292,12 @@
   const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const byId = (id) => sessions.find((s) => s.id === id);
   const label = (s) => s.title || s.project || s.id.slice(0, 8);
-  const providerName = (s) => s.providerName || ({ codex: 'Codex', claude: 'Claude', dsh: 'DeepSeek' }[s.provider] || '');
+  const providerName = (s) => s.providerName || ({
+    codex: 'Codex', claude: 'Claude', dsh: 'DeepSeek',
+    antigravity: 'Antigravity', cursor: 'Cursor', grok: 'Grok',
+  }[s.provider] || '');
   // 第二行开头的小 logo：一眼认出是哪个软件。图标来自各家的 App 或官网，只用来标明来源。
-  // app/logos 里还放着 Cursor、Kimi、Grok 的，接入这些工具时再加进来。
-  const LOGOS = new Set(['claude', 'codex', 'dsh']);
+  const LOGOS = new Set(['claude', 'codex', 'dsh', 'antigravity', 'cursor', 'grok']);
   const logo = (s) => (LOGOS.has(s.provider) ? '<img class="logo" src="logos/' + s.provider + '.png" alt="" aria-hidden="true">' : '');
   const projectName = (s) => (s.project || '').split('/').filter(Boolean).pop() || '';
   const meta = (s) => [providerName(s), projectName(s)].filter(Boolean).join(' · ');

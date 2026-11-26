@@ -8,7 +8,14 @@ export const MAX_REMINDERS = 3;
 const QUOTA_CHECK_MS = 60_000;
 const KEEP = 20;
 
-const TOOL_NAME = { claude: 'Claude Code', codex: 'Codex', dsh: 'DeepSeek' };
+const TOOL_NAME = {
+  claude: 'Claude Code',
+  codex: 'Codex',
+  dsh: 'DeepSeek',
+  antigravity: 'Antigravity',
+  cursor: 'Cursor',
+  grok: 'Grok',
+};
 const WINDOW_NAME = { five_hour: '5 小时', weekly: '每周' };
 const toolName = (s) => TOOL_NAME[s.provider] || s.providerName || '任务';
 const hhmm = (ms) => new Date(ms).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });

@@ -36,7 +36,7 @@
     --card: rgba(255,255,255,.05); --card-shadow: inset 0 0 0 .5px rgba(255,255,255,.08);
     --nav-on: linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.08)); --nav-on-ink: #eef1f6;
     --nav-on-shadow: inset 0 1px 0 rgba(255,255,255,.22);
-    --glyph-claude: #e8a083; --glyph-dsh: #9aaeff;
+    --glyph-claude: #e8a083; --glyph-dsh: #9aaeff; --glyph-antigravity: #7bc7ff; --glyph-cursor: #b49cff; --glyph-grok: #eef1f6;
     --liquid: cubic-bezier(.2,.8,.2,1);
     --spring: linear(0, 0.058, 0.194, 0.361, 0.529, 0.679, 0.802, 0.897, 0.964, 1.007, 1.032, 1.044, 1.046, 1.042, 1.035, 1.028, 1.02, 1.013, 1.008, 1);
     --fire-fill: linear-gradient(90deg, #ffd84a, #ff8a2b);
@@ -68,7 +68,7 @@
     --card: rgba(255,255,255,.46);
     --card-shadow: 0 1px 2px rgba(40,45,120,.05), 0 8px 24px rgba(40,45,120,.06), inset 0 0 0 .5px rgba(255,255,255,.75), inset 0 0 0 1px rgba(40,45,120,.06);
     --nav-on: #5249e0; --nav-on-ink: #ffffff; --nav-on-shadow: 0 8px 20px -10px rgba(82,73,224,.8);
-    --glyph-claude: #a94a26; --glyph-dsh: #3346b8;
+    --glyph-claude: #a94a26; --glyph-dsh: #3346b8; --glyph-antigravity: #1665b8; --glyph-cursor: #5a38b8; --glyph-grok: #14152b;
   }
   @media (prefers-color-scheme: light) {
     :root[data-theme="system"] {
@@ -97,7 +97,7 @@
     --card: rgba(255,255,255,.46);
     --card-shadow: 0 1px 2px rgba(40,45,120,.05), 0 8px 24px rgba(40,45,120,.06), inset 0 0 0 .5px rgba(255,255,255,.75), inset 0 0 0 1px rgba(40,45,120,.06);
     --nav-on: #5249e0; --nav-on-ink: #ffffff; --nav-on-shadow: 0 8px 20px -10px rgba(82,73,224,.8);
-    --glyph-claude: #a94a26; --glyph-dsh: #3346b8;
+    --glyph-claude: #a94a26; --glyph-dsh: #3346b8; --glyph-antigravity: #1665b8; --glyph-cursor: #5a38b8; --glyph-grok: #14152b;
     }
   }
   * { box-sizing: border-box; }
@@ -151,6 +151,9 @@
   .glyph.claude { background: rgba(217,119,87,.18); color: var(--glyph-claude); }
   .glyph.codex { background: rgba(var(--tint),.10); color: var(--ink); }
   .glyph.dsh { background: rgba(77,107,254,.20); color: var(--glyph-dsh); }
+  .glyph.antigravity { background: rgba(66,153,255,.18); color: var(--glyph-antigravity); }
+  .glyph.cursor { background: rgba(139,92,246,.18); color: var(--glyph-cursor); }
+  .glyph.grok { background: rgba(var(--tint),.12); color: var(--glyph-grok); }
 
   .pill { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 11px; white-space: nowrap; }
   .pill.ok { color: var(--copper); background: rgba(var(--done-rgb),.12); }
@@ -665,7 +668,10 @@
   });
 
   // ── connections ────────────────────────────────────────
-  const GLYPH = { claude: ['claude', 'C'], codex: ['codex', '◎'], dsh: ['dsh', 'D'] };
+  const GLYPH = {
+    claude: ['claude', 'C'], codex: ['codex', '◎'], dsh: ['dsh', 'D'],
+    antigravity: ['antigravity', 'A'], cursor: ['cursor', 'Cu'], grok: ['grok', 'G'],
+  };
   const pill = (kind, text) => '<span class="pill ' + kind + '">' + esc(text) + '</span>';
 
   // One row per tool: connected or not, and a button to change it. A tool
@@ -674,11 +680,17 @@
     claude: '显示 Claude Code（桌面版和命令行）的任务',
     codex: '显示 Codex 的任务和额度',
     dsh: '显示 DeepSeek Harness 的任务，并装上插件：能提示等你回答的问题，点击直接打开对话',
+    antigravity: '读取 Antigravity 本机对话数据库，显示在跑、等你和完成状态',
+    cursor: '通过 Cursor 生命周期钩子与本机记录实时同步任务状态；断开后自动还原 hooks.json',
+    grok: '同时读取 Grok 命令行与桌面版的任务状态，并挂接本机钩子；断开后自动清理',
   };
   const MISSING = {
     claude: '本机没有找到 Claude Code 的记录，用过一次后就能连接',
     codex: '本机没有找到 Codex 的记录（~/.codex），用过一次后就能连接',
     dsh: '本机没有找到 DeepSeek Harness',
+    antigravity: '本机没有找到 Antigravity（~/.gemini/antigravity）',
+    cursor: '本机没有找到 Cursor（~/.cursor）',
+    grok: '本机没有找到 Grok（~/.grok 或桌面版）',
   };
   function toolRow(t) {
     const [cls, letter] = GLYPH[t.id] || ['codex', '?'];
@@ -704,6 +716,9 @@
         claude: '本机已安装。连接后显示它的任务',
         codex: '本机已安装。连接后显示它的任务和额度',
         dsh: '本机已安装。连接后显示它的任务，并装上一个小插件；需要重启 DeepSeek Harness 生效',
+        antigravity: '本机已安装。连接后读取它的本机对话记录，不改动任何配置',
+        cursor: '本机已安装。连接后会向 ~/.cursor/hooks.json 追加事件钩子（保留原有钩子，断开时还原）',
+        grok: '本机已安装。连接后读取 Grok 命令行与桌面版状态，并添加独立钩子文件（断开时移除）',
       }[t.id];
       right = pill('off', '未连接') + ' <button class="btn small primary" data-provider="' + t.id + '" data-on="1">连接</button>';
     }
@@ -897,6 +912,9 @@
     ['claude', 'Claude Code', '桌面版不提供实时百分比，打开后只在额度用完时提醒几点重置'],
     ['codex', 'Codex', '5 小时和每周的剩余额度，以及重置时间'],
     ['dsh', 'DeepSeek', '账户余额，每 10 分钟查一次（需要先在「连接」里填 API Key）'],
+    ['antigravity', 'Antigravity', '本机近 5 小时与今日回复用量（支持本地额度快照）'],
+    ['cursor', 'Cursor', '套餐类型与近期活跃会话统计（支持本地额度快照）'],
+    ['grok', 'Grok', 'SuperGrok 计费周期剩余额度与命令行本地用量'],
   ];
   function renderQuotaSwitches() {
     const shown = info.config.quota || {};
